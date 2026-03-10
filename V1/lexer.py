@@ -1,4 +1,4 @@
-from .error import LexicalError
+from .error import LexicalError, AssignmentLoopError
 
 ADDITIONAL = "_-+*/"
 LITERALS = "=()[]{}.,"
@@ -68,6 +68,9 @@ class Number:
     def __repr__(self):
         return self.name
 
+    def inner_link(self, *args):
+        return self
+
     def find_deps(self, *args):
         pass
 
@@ -82,6 +85,15 @@ class Name:
 
     def __repr__(self):
         return self.name
+
+    def inner_link(self, code, chain):
+        if self.text in chain:
+            raise AssignmentLoopError(chain + (self.text,))
+        if self.text in code:
+            assign = code[self.text]
+            return assign.inner_link(code, chain)
+        else:
+            return self
 
     def find_deps(self, result, context):
         if self.text not in context:
