@@ -1,9 +1,11 @@
+from .error import LexicalError
+
 ADDITIONAL = "_-+*/"
 LITERALS = "=()[]{}.,"
 
 
 class END:
-    pass
+    name = "END"
 
 
 class LL1Text:
@@ -44,9 +46,9 @@ class LL1Text:
 
     def read_name(self):
         if not (self.now.isalpha() or self.now in ADDITIONAL):
-            raise RuntimeError(
-                "{}, {}: Variable name starts with invalid character '{}'"
-                .format(self.row, self.col, self.now))
+            raise LexicalError(
+                "Variable name starts with invalid character '{}'!"
+                .format(self.now), self.get_debug())
         buffer = [self.now]
         while self.look_ahead != END and (self.look_ahead.isalnum()
                                           or self.look_ahead in ADDITIONAL):
@@ -56,24 +58,30 @@ class LL1Text:
 
 
 class Number:
+    name = "NUM"
+
     def __init__(self, text, debug):
         self.n = int(text)
-        self.row, self.col = debug
+        self.row, self.col = self.debug = debug
+        self.name = "NUM {}".format(self.n)
 
     def __repr__(self):
-        return "NUM {}".format(self.n)
+        return self.name
 
     def find_deps(self, *args):
         pass
 
 
 class Name:
+    name = "NAME"
+
     def __init__(self, text, debug):
         self.text = text
-        self.row, self.col = debug
+        self.row, self.col = self.debug = debug
+        self.name = "NAME '{}'".format(text)
 
     def __repr__(self):
-        return "NAME '{}'".format(self.text)
+        return self.name
 
     def find_deps(self, result, context):
         if self.text not in context:
@@ -81,12 +89,15 @@ class Name:
 
 
 class Literal:
-    def __init__(self, text, debug):
+    name = "LIT"
+
+    def __init__(self, text, debug=(0, 0)):
         self.ch = text
-        self.row, self.col = debug
+        self.row, self.col = self.debug = debug
+        self.name = "LIT'{}'".format(text)
 
     def __repr__(self):
-        return "LIT'{}'".format(self.ch)
+        return self.name
 
 
 def tokenize(text):
@@ -100,7 +111,6 @@ def tokenize(text):
         elif ch.isalpha() or ch in ADDITIONAL:
             yield Name(it.read_name(), debug)
         elif not ch.isspace():
-            raise RuntimeError(
-                "Unknown symbol '{}' in row {}!".format(ch, it.row))
+            raise LexicalError("Unknown symbol '{}'!".format(ch), debug)
     yield END
     yield END

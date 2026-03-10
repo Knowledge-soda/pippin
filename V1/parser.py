@@ -1,4 +1,28 @@
 from .lexer import Number, Name, Literal, END
+from .error import UnexpectedTokenError
+
+
+def check_token_type(token, token_class):
+    if token == END:
+        return False
+    if isinstance(token_class, Literal):
+        return isinstance(token, Literal) and token.ch == token_class.ch
+    return isinstance(token, token_class)
+
+
+def expect_token_type(token, token_class):
+    if not check_token_type(token, token_class):
+        raise UnexpectedTokenError(token, token_class.name)
+
+
+def expect_token_types(token, class_list):
+    for token_class in class_list:
+        if check_token_type(token, token_class):
+            return
+    raise UnexpectedTokenError(
+        token,
+        "/".join(token_class.name for token_class in class_list)
+    )
 
 
 class Application:
@@ -81,44 +105,32 @@ class Program:
 
 def expr(it):
     now, new = next(it)
-    if isinstance(now, Number):
+    if check_token_type(now, Number):
         return now
-    if not isinstance(now, Name):
-        raise RuntimeError("{}, {}: Unexpected token {}.".format(
-            now.row, now.col, repr(now)))
+    expect_token_types(now, (Name, Number))
     cur = now
-    if isinstance(new, Literal) and new.ch == "(":
+    if check_token_type(new, Literal("(")):
         cur = Application(cur)
         next(it)
         now, new = next(it)
-        if not isinstance(now, Name):
-            raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                now.row, now.col, repr(now)))
-        if not (isinstance(new, Literal) and new.ch == "="):
-            raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                new.row, new.col, repr(new)))
+        expect_token_type(now, Name)
+        expect_token_type(new, Literal("="))
         name = now
         next(it)
         rhs = expr(it)
         cur.add_param(name, rhs)
         now, new = next(it)
-        while isinstance(now, Literal) and now.ch == ",":
+        while check_token_type(now, Literal(",")):
             now, new = next(it)
-            if not isinstance(now, Name):
-                raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                    now.row, now.col, repr(now)))
-            if not (isinstance(new, Literal) and new.ch == "="):
-                raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                    new.row, new.col, repr(new)))
+            expect_token_type(now, Name)
+            expect_token_type(new, Literal("="))
             name = now
             next(it)
             rhs = expr(it)
             cur.add_param(name, rhs)
             now, new = next(it)
-        if not (isinstance(now, Literal) and now.ch == ")"):
-            raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                now.row, now.col, repr(now)))
-    if isinstance(new, Literal) and new.ch == ".":
+        expect_token_type(now, Literal(")"))
+    if check_token_type(new, Literal(".")):
         next(it)
         now, new = next(it)
         cur = Property(cur, now)
@@ -129,78 +141,55 @@ def function(it):
     now, new = next(it)
     varlist = []
     statlist = []
-    if not isinstance(now, Literal) or now.ch not in "([":
-        raise RuntimeError("{}, {}: Unexpected token {}.".format(
-            now.row, now.col, repr(now)))
-    if isinstance(now, Literal) and now.ch == "(":
+    expect_token_types(now, (Literal("("), Literal("[")))
+    if check_token_type(now, Literal("(")):
         now, new = next(it)
-        if not isinstance(now, Name):
-            raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                now.row, now.col, repr(now)))
+        expect_token_type(now, Name)
         name = now
         varlist.append(name)
         now, new = next(it)
-        while isinstance(now, Literal) and now.ch == ",":
+        while check_token_type(now, Literal(",")):
             now, new = next(it)
-            if not isinstance(now, Name):
-                raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                    now.row, now.col, repr(now)))
+            expect_token_type(now, Name)
             name = now
             varlist.append(name)
             now, new = next(it)
-        if not (isinstance(now, Literal) and now.ch == ")"):
-            raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                now.row, now.col, repr(now)))
+        expect_token_type(now, Literal(")"))
         now, new = next(it)
-    if isinstance(now, Literal) and now.ch == "[":
+    if check_token_type(now, Literal("[")):
         now, new = next(it)
-        if not isinstance(now, Name):
-            raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                now.row, now.col, repr(now)))
+        expect_token_type(now, Name)
         name = now
         statlist.append(name)
         now, new = next(it)
-        while isinstance(now, Literal) and now.ch == ",":
+        while check_token_type(now, Literal(",")):
             now, new = next(it)
-            if not isinstance(now, Name):
-                raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                    now.row, now.col, repr(now)))
+            expect_token_type(now, Name)
             varlist.append(name)
             now, new = next(it)
-        if not (isinstance(now, Literal) and now.ch == "]"):
-            raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                now.row, now.col, repr(now)))
+        expect_token_type(now, Literal("]"))
         now, new = next(it)
     cur = Function(varlist, statlist)
-    if isinstance(now, Literal) and now.ch == "{":
-        while not (isinstance(now, Literal) and now.ch == "}"):
+    if check_token_type(now, Literal("{")):
+        while not check_token_type(now, Literal("}")):
             now, new = next(it)
-            if isinstance(now, Literal) and now.ch == "[":
+            if check_token_type(now, Literal("[")):
                 result = True
                 name, new = next(it)
-                if not isinstance(name, Name):
-                    raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                        name.row, name.col, repr(name)))
-                if not (isinstance(new, Literal) and new.ch == "]"):
-                    raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                        new.row, new.col, repr(new)))
+                expect_token_type(name, Name)
+                expect_token_type(new, Literal("]"))
                 next(it)
-            elif isinstance(now, Name):
+            elif check_token_type(now, Name):
                 result = False
                 name = now
             else:
-                raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                    now.row, now.col, repr(now)))
+                expect_token_types(now, (Literal("["), Name))
             now, new = next(it)
-            if not (isinstance(now, Literal) and now.ch == "="):
-                raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                    now.row, now.col, repr(now)))
+            expect_token_type(now, Literal("="))
             rhs = expr(it)
             cur.add_node(name, rhs, result)
             now, new = next(it)
-            if not (isinstance(now, Literal) and now.ch in "},"):
-                raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                    now.row, now.col, repr(now)))
+            expect_token_types(now, (Literal("}"), Literal(",")))
     return cur
 
 
@@ -209,9 +198,7 @@ def program(it):
     now, new = next(it)
     while now is not END:
         name = now
-        if not (isinstance(new, Literal) and new.ch == "="):
-            raise RuntimeError("{}, {}: Unexpected token {}.".format(
-                new.row, new.col, repr(new)))
+        expect_token_type(new, Literal("="))
         next(it)
         func = function(it)
         ret.add_func(name, func)
