@@ -1,5 +1,7 @@
 from .lexer import Number, Name, Literal, END
-from .error import UnexpectedTokenError, DuplicateNameError
+from .error import UnexpectedTokenError, DuplicateNameError, \
+        TypingError
+from .types import FunctionType, NumberType
 
 
 def check_token_type(token, token_class):
@@ -29,6 +31,8 @@ class Application:
     def __init__(self, name):
         self.name = name
         self.params = []
+        self.linked = False
+        self.retfunc = False
 
     def __repr__(self):
         if isinstance(self.params, dict):
@@ -58,26 +62,68 @@ class Application:
         self.params = new_params
         return self
 
+    def find_arguments(self):
+        return self.func.find_arguments().union(
+            *(value.find_arguments() for value in self.params.values()))
+
     def find_deps(self, result, context):
         self.name.find_deps(result, context)
         for _, value in self.params:
             value.find_deps(result, context)
+
+    def outer_link(self, functions):
+        if self.linked:
+            return self
+        self.linked = True
+        self.func = self.func.outer_link(functions)
+        for name, value in self.params.items():
+            self.params[name] = value.outer_link(functions)
+            if not isinstance(self.params[name].type, NumberType):
+                raise TypingError(self.name.debug, "int",
+                                  self.params[name].type)
+        self.type = self.func.type.apply(self.params.keys())
+        if self.func.retfunc:
+            ret = Property(self, Name("return", self.name.debug))
+            ret.type = NumberType()
+            ret.linked = True
+            return ret
+        return self
 
 
 class Property:
     def __init__(self, left, right):
         self.left = left
         self.right = right
+        self.linked = False
 
     def __repr__(self):
         return "PROP({}, {})".format(self.left, self.right)
 
     def inner_link(self, code, chain):
-        self.left.inner_link(code, chain)
+        self.left = self.left.inner_link(code, chain)
         return self
+
+    def find_arguments(self):
+        return self.left.find_arguments()
 
     def find_deps(self, result, context):
         self.left.find_deps(result, context)
+
+    def outer_link(self, functions):
+        if self.linked:
+            return self
+        self.linked = True
+        self.left = self.left.outer_link(functions)
+        if not isinstance(self.left.type, FunctionType):
+            raise TypingError(self.right.debug,
+                              "function",
+                              self.left.type)
+        if not self.left.type.free(self.right.text):
+            raise TypingError(self.right.debug,
+                              "[{}]".format(self.right.text),
+                              self.left.type)
+        self.type = NumberType()
+        return self
 
 
 class Assignment:
@@ -95,6 +141,15 @@ class Assignment:
             self.right = self.right.inner_link(code, chain + (self.name.text,))
         return self.right
 
+    def find_arguments(self):
+        return self.right.find_arguments()
+
+    def get_text(self):
+        return self.name.text
+
+    def outer_link(self, functions):
+        self.right = self.right.outer_link(functions)
+
 
 class Argument:
     def __init__(self, name):
@@ -105,6 +160,16 @@ class Argument:
         return "({})".format(self.name)
 
     def inner_link(self, code, chain):
+        return self
+
+    def get_text(self):
+        return self.name.text
+
+    def find_arguments(self):
+        return frozenset((self.name.text,))
+
+    def outer_link(self, functions):
+        self.type = NumberType()
         return self
 
 
@@ -133,6 +198,22 @@ class Function:
         for result in self.results:
             result.inner_link(self.code, tuple())
 
+    def compute_type(self):
+        self.type = FunctionType(
+            (var.get_text() for var in self.varlist),
+            (var.get_text() for var in self.results)
+        )
+        for result in self.results:
+            if isinstance(result, Argument):
+                continue
+            self.type.connect(result.find_arguments(), result.get_text())
+        self.retfunc = len(self.results) == 1 and\
+            self.results[0].get_text() == "return"
+
+    def outer_link(self, functions):
+        for result in self.results:
+            result.outer_link(functions)
+
     def find_deps(self):
         context = tuple(val[0].text for val in self.code) +\
                   tuple(name.text for name in self.varlist)
@@ -155,6 +236,14 @@ class Program:
         if name.text == "main":
             self.main = body
         self.functions[name.text] = body
+
+    def link(self, built_ins):
+        for function in self.functions.values():
+            function.inner_link()
+            function.compute_type()
+        self.functions.update(built_ins)
+        for function in self.functions.values():
+            function.outer_link(self.functions)
 
 
 def expr(it):

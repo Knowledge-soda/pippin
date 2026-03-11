@@ -6,7 +6,7 @@ class LexicalError(CompilerError):
     def __init__(self, message, debug):
         row, col = debug
         super().__init__(
-            "Error line {}, col {}: {}".format(row, col, message)
+            "line {}, col {}: {}".format(row, col, message)
         )
 
 
@@ -14,7 +14,7 @@ class SyntacticError(CompilerError):
     def __init__(self, message, debug):
         row, col = debug
         super().__init__(
-            "Error line {}, col {}: {}".format(row, col, message)
+            "line {}, col {}: {}".format(row, col, message)
         )
 
 
@@ -43,4 +43,20 @@ class AssignmentLoopError(SemanticError):
         super().__init__(
             "There is assignment loop: {}!"
             .format(", ".join(chain))
+        )
+
+
+class TypingError(SemanticError):
+    def __init__(self, debug, wanted, got):
+        super().__init__(
+            "line {}, col {}: expected type {}, got {}"
+            .format(debug[0], debug[1], wanted, repr(got))
+        )
+
+
+class UnknownNameError(SemanticError):
+    def __init__(self, debug, text):
+        super().__init__(
+            "line {}, col {}: unknown name {}"
+            .format(debug[0], debug[1], text)
         )

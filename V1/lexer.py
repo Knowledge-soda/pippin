@@ -1,4 +1,5 @@
-from .error import LexicalError, AssignmentLoopError
+from .error import LexicalError, AssignmentLoopError, UnknownNameError
+from .types import NumberType
 
 ADDITIONAL = "_-+*/"
 LITERALS = "=()[]{}.,"
@@ -64,6 +65,7 @@ class Number:
         self.n = int(text)
         self.row, self.col = self.debug = debug
         self.name = "NUM {}".format(self.n)
+        self.linked = False
 
     def __repr__(self):
         return self.name
@@ -71,8 +73,18 @@ class Number:
     def inner_link(self, *args):
         return self
 
+    def find_arguments(self):
+        return frozenset()
+
     def find_deps(self, *args):
         pass
+
+    def outer_link(self, *args):
+        if self.linked:
+            return self
+        self.linked = True
+        self.type = NumberType()
+        return self
 
 
 class Name:
@@ -94,6 +106,17 @@ class Name:
             return assign.inner_link(code, chain)
         else:
             return self
+
+    def find_arguments(self):
+        return frozenset()
+
+    def get_text(self):
+        return self.text
+
+    def outer_link(self, functions):
+        if self.text not in functions:
+            raise UnknownNameError(self.debug, self.text)
+        return functions[self.text]
 
     def find_deps(self, result, context):
         if self.text not in context:
