@@ -1,5 +1,7 @@
 from .error import LexicalError, AssignmentLoopError, UnknownNameError
 from .types import NumberType
+from .interpreter import Node
+from . import interpreter
 
 ADDITIONAL = "_-+*/"
 LITERALS = "=()[]{}.,"
@@ -66,6 +68,7 @@ class Number:
         self.row, self.col = self.debug = debug
         self.name = "NUM {}".format(self.n)
         self.linked = False
+        self.node = None
 
     def __repr__(self):
         return self.name
@@ -85,6 +88,11 @@ class Number:
         self.linked = True
         self.type = NumberType()
         return self
+
+    def nodisate(self):
+        if self.node is None:
+            self.node = Node(interpreter.Number(self.n))
+        return self.node
 
 
 class Name:

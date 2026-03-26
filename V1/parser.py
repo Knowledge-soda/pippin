@@ -2,6 +2,8 @@ from .lexer import Number, Name, Literal, END
 from .error import UnexpectedTokenError, DuplicateNameError, \
         TypingError
 from .types import FunctionType, NumberType
+from .interpreter import Node
+from . import interpreter
 
 
 def check_token_type(token, token_class):
@@ -33,6 +35,7 @@ class Application:
         self.params = []
         self.linked = False
         self.retfunc = False
+        self.node = None
 
     def __repr__(self):
         if isinstance(self.params, dict):
@@ -89,12 +92,21 @@ class Application:
             return ret
         return self
 
+    def nodisate(self):
+        if self.node is None:
+            func = self.func.nodisate()
+            params = tuple(
+                (key, node.nodisate()) for key, node in self.params.items())
+            self.node = Node(interpreter.Application(func, params))
+        return self.node
+
 
 class Property:
     def __init__(self, left, right):
         self.left = left
         self.right = right
         self.linked = False
+        self.node = None
 
     def __repr__(self):
         return "PROP({}, {})".format(self.left, self.right)
@@ -125,6 +137,12 @@ class Property:
         self.type = NumberType()
         return self
 
+    def nodisate(self):
+        if self.node is None:
+            self.node = Node(interpreter.Property(self.left.nodisate(),
+                                                  self.right.get_text()))
+        return self.node
+
 
 class Assignment:
     def __init__(self, name, right):
@@ -150,11 +168,15 @@ class Assignment:
     def outer_link(self, functions):
         self.right = self.right.outer_link(functions)
 
+    def nodisate(self):
+        return self.right.nodisate()
+
 
 class Argument:
     def __init__(self, name):
         self.name = name
         self.linked = True
+        self.node = None
 
     def __repr__(self):
         return "({})".format(self.name)
@@ -172,6 +194,11 @@ class Argument:
         self.type = NumberType()
         return self
 
+    def nodisate(self):
+        if self.node is None:
+            self.node = Node(interpreter.Argument(self.name.text))
+        return self.node
+
 
 class Function:
     def __init__(self, varlist, statlist):
@@ -180,11 +207,19 @@ class Function:
         self.code = {var.text: Argument(var) for var in varlist}
         for var in self.results:
             self.code[var.text] = Argument(var)
+        self.node = None
 
     def __repr__(self):
         return "CODE({})".format(
             ", ".join(repr(assign) for assign in self.code.values())
         )
+
+    @classmethod
+    def _processed(cls, vardict, resultdict):
+        ret = cls(tuple(), tuple())
+        ret.node_vars = vardict
+        ret.node_results = resultdict
+        return ret
 
     def add_assign(self, name, rhs, end=False):
         if name.text in self.code:
@@ -221,6 +256,12 @@ class Function:
         for name, rhs in self.code:
             rhs.find_deps(self.deps, context)
 
+    def nodisate(self):
+        if self.node is None:
+            self.node = Node(interpreter.Function.from_function(self))
+            self.node.node = self.node
+        return self.node
+
 
 class Program:
     def __init__(self):
@@ -244,6 +285,9 @@ class Program:
         self.functions.update(built_ins)
         for function in self.functions.values():
             function.outer_link(self.functions)
+
+    def nodisate(self):
+        return self.main.nodisate()
 
 
 def expr(it):
