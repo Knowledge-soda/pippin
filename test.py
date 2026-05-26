@@ -1,6 +1,6 @@
 from itertools import pairwise
 
-from V1 import lexer, parser, builtin, interpreter
+from V1 import lexer, parser, builtin, interpreter, compiler
 
 
 def test_lexer(filename):
@@ -36,3 +36,15 @@ def test_interpreter(filename):
     program.link(builtin.generate_builtins())
     nodes = program.nodisate()
     interpreter.driver(nodes)
+
+
+def test_compiler(filename, compiled_filename):
+    with open(filename) as file:
+        text = file.read()
+    tokens = lexer.tokenize(text)
+    program = parser.program(pairwise(tokens))
+    program.link(builtin.generate_builtins())
+    comp = compiler.Compiler()
+    builtin.builtins_compile(comp)
+    main_name = program.compile(comp)
+    comp.finish(main_name, compiled_filename)

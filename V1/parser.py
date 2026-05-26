@@ -36,6 +36,7 @@ class Application:
         self.linked = False
         self.retfunc = False
         self.node = None
+        self.ccname = None
 
     def __repr__(self):
         if isinstance(self.params, dict):
@@ -100,6 +101,20 @@ class Application:
             self.node = Node(interpreter.Application(func, params))
         return self.node
 
+    def compile(self, compiler):
+        if self.ccname is None:
+            self.ccname = compiler.get_name("APPL")
+            func = self.func.compile(compiler)
+            compiler.add_line(
+                "Node *{} = create_application({}, {});"
+                .format(self.ccname, func, len(self.params)))
+            for key, node in self.params.items():
+                node_name = node.compile(compiler)
+                compiler.add_line(
+                    "set_appl_arg({}, \"{}\", {});"
+                    .format(self.ccname, key, node_name))
+        return self.ccname
+
 
 class Property:
     def __init__(self, left, right):
@@ -107,6 +122,7 @@ class Property:
         self.right = right
         self.linked = False
         self.node = None
+        self.ccname = None
 
     def __repr__(self):
         return "PROP({}, {})".format(self.left, self.right)
@@ -143,6 +159,16 @@ class Property:
                                                   self.right.get_text()))
         return self.node
 
+    def compile(self, compiler):
+        if self.ccname is None:
+            self.ccname = compiler.get_name("PROP")
+            leftname = self.left.compile(compiler)
+            compiler.add_line(
+                "Node *{} = create_property({}, \"{}\");"
+                .format(self.ccname, leftname, self.right.get_text())
+            )
+        return self.ccname
+
 
 class Assignment:
     def __init__(self, name, right):
@@ -171,12 +197,16 @@ class Assignment:
     def nodisate(self):
         return self.right.nodisate()
 
+    def compile(self, compiler):
+        return self.right.compile(compiler)
+
 
 class Argument:
     def __init__(self, name):
         self.name = name
         self.linked = True
         self.node = None
+        self.ccname = None
 
     def __repr__(self):
         return "({})".format(self.name)
@@ -199,6 +229,15 @@ class Argument:
             self.node = Node(interpreter.Argument(self.name.text))
         return self.node
 
+    def compile(self, compiler):
+        if self.ccname is None:
+            self.ccname = compiler.get_name("ARG")
+            compiler.add_line(
+                "Node *{} = create_name(\"{}\");".
+                format(self.ccname, self.name.text)
+            )
+        return self.ccname
+
 
 class Function:
     def __init__(self, varlist, statlist):
@@ -208,6 +247,7 @@ class Function:
         for var in self.results:
             self.code[var.text] = Argument(var)
         self.node = None
+        self.ccname = None
 
     def __repr__(self):
         return "CODE({})".format(
@@ -262,6 +302,22 @@ class Function:
             self.node.node = self.node
         return self.node
 
+    def compile(self, compiler):
+        if self.ccname is None:
+            self.ccname = compiler.get_name("FUNC")
+            compiler.add_line(
+                "Node *{} = create_func({}, {});"
+                .format(self.ccname, len(self.varlist), len(self.results))
+            )
+            for assignment in self.results:
+                key = assignment.get_text()
+                node = assignment.compile(compiler)
+                compiler.add_line(
+                    "set_func_res({}, \"{}\", {});"
+                    .format(self.ccname, key, node)
+                )
+        return self.ccname
+
 
 class Program:
     def __init__(self):
@@ -288,6 +344,9 @@ class Program:
 
     def nodisate(self):
         return self.main.nodisate()
+
+    def compile(self, compiler):
+        return self.main.compile(compiler)
 
 
 def expr(it):

@@ -69,6 +69,7 @@ class Number:
         self.name = "NUM {}".format(self.n)
         self.linked = False
         self.node = None
+        self.ccname = None
 
     def __repr__(self):
         return self.name
@@ -93,6 +94,13 @@ class Number:
         if self.node is None:
             self.node = Node(interpreter.Number(self.n))
         return self.node
+
+    def compile(self, compiler):
+        if self.ccname is None:
+            self.ccname = compiler.get_name("num")
+            compiler.add_line(
+                "Node *{} = create_number({});".format(self.ccname, self.n))
+        return self.ccname
 
 
 class Name:

@@ -27,11 +27,23 @@ class BuiltInFunction(Function):
                     ()))
         return self.node
 
+    def compile(self, compiler):
+        return "_PAG_" + BUILT_IN_CODES[self.name]
+
 
 def generate_builtins():
     return {
         name: BuiltInFunction(name) for name in "+-*/"
     }
+
+
+def builtins_compile(compiler):
+    for name in "+-*/":
+        code = BUILT_IN_CODES[name]
+        compiler.add_line(
+            "Node *{} = create_rl_built_in({});"
+            .format("_PAG_" + code, code)
+        )
 
 
 class BuiltInNode(interpreter.InterpretedNode):
@@ -75,4 +87,12 @@ BUILT_IN_NODES = {
     "*": MultNode(),
     "-": MinusNode(),
     "/": DivNode()
+}
+
+
+BUILT_IN_CODES = {
+    "+": "sum",
+    "*": "mult",
+    "-": "minus",
+    "/": "divide"
 }
