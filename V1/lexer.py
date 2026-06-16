@@ -139,6 +139,18 @@ class Name:
             result.add(self.text)
 
 
+class Pragma:
+    name = "PRAGMA"
+
+    def __init__(self, text, debug):
+        self.text = text
+        self.row, self.col = self.debug = debug
+        self.name = "PRAGMA '{}'".format(text)
+
+    def __repr__(self):
+        return self.name
+
+
 class Literal:
     name = "LIT"
 
@@ -153,7 +165,20 @@ class Literal:
 
 def tokenize(text):
     it = LL1Text(text)
+    line_comment = False
+    nested_comment = 0
     for ch, look in it:
+        if line_comment:
+            if ch == "\n":
+                line_comment = False
+            continue
+        if nested_comment:
+            if ch == "}" and look == "#":
+                nested_comment -= 1
+            if ch == "#" and look == "{":
+                nested_comment += 1
+            continue
+
         debug = it.get_debug()
         if ch.isdecimal():
             yield Number(it.read_while(str.isdecimal), debug)
@@ -161,6 +186,15 @@ def tokenize(text):
             yield Literal(ch, debug)
         elif ch.isalpha() or ch in ADDITIONAL:
             yield Name(it.read_name(), debug)
+        elif ch == "#":
+            if look == "#":
+                next(it)
+                next(it)
+                yield Pragma(it.read_name(), debug)
+            elif look == "{":
+                nested_comment += 1
+            else:
+                line_comment = True
         elif not ch.isspace():
             raise LexicalError("Unknown symbol '{}'!".format(ch), debug)
     yield END
