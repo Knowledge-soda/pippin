@@ -80,9 +80,6 @@ class Number:
     def find_arguments(self):
         return frozenset()
 
-    def find_deps(self, *args):
-        pass
-
     def outer_link(self, *args):
         if self.linked:
             return self

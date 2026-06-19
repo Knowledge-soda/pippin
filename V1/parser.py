@@ -1,9 +1,36 @@
 from .lexer import Number, Name, Literal, END
 from .error import UnexpectedTokenError, DuplicateNameError, \
-        TypingError
+        TypingError, SyntacticError
 from .types import FunctionType, NumberType
 from .interpreter import Node
 from . import interpreter
+
+
+class LL1:
+    def __init__(self, stream):
+        self._gen = self._look_ahead_iterator(stream)
+        self._repeat = False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self._repeat:
+            self._repeat = False
+            return (self.now, self.look_ahead)
+        return next(self._gen)
+
+    def _look_ahead_iterator(self, it):
+        self.now = next(it)
+        for look_ahead in it:
+            self.look_ahead = look_ahead
+            yield self.now, look_ahead
+            self.now = look_ahead
+        self.look_ahead = END
+        yield self.now, look_ahead
+
+    def repeat_last(self):
+        self._repeat = True
 
 
 def check_token_type(token, token_class):
@@ -39,14 +66,6 @@ class Application:
         self.ccname = None
 
     def __repr__(self):
-        if isinstance(self.params, dict):
-            return "APPL({}, ({}))".format(
-                repr(self.name),
-                ", ".join(
-                    "{}={}".format(repr(name), repr(rhs))
-                    for name, rhs in self.params.items()
-                )
-            )
         return "APPL({}, ({}))".format(
             repr(self.name),
             ", ".join(
@@ -60,32 +79,37 @@ class Application:
 
     def inner_link(self, code, chain):
         self.func = self.name.inner_link(code, chain)
-        new_params = {}
-        for name, value in self.params:
-            new_params[name.text] = value.inner_link(code, chain)
+        # TODO: accept number specified inputs
+        accepting = 0
+        new_params = []
+        for i, (name, value) in enumerate(self.params):
+            right = value.inner_link(code, chain)
+            if name is None:
+                if accepting:
+                    raise SyntacticError("Free argument too late!",
+                                         value.debug)
+                new_params.append((i, right))
+            if isinstance(name, Name):
+                new_params.append((name.text, right))
+                accepting = 2
         self.params = new_params
         return self
 
     def find_arguments(self):
         return self.func.find_arguments().union(
-            *(value.find_arguments() for value in self.params.values()))
-
-    def find_deps(self, result, context):
-        self.name.find_deps(result, context)
-        for _, value in self.params:
-            value.find_deps(result, context)
+            *(value.find_arguments() for _, value in self.params))
 
     def outer_link(self, functions):
         if self.linked:
             return self
         self.linked = True
         self.func = self.func.outer_link(functions)
-        for name, value in self.params.items():
-            self.params[name] = value.outer_link(functions)
-            if not isinstance(self.params[name].type, NumberType):
+        for i, (name, value) in enumerate(self.params):
+            self.params[i] = (name, value.outer_link(functions))
+            if not isinstance(self.params[i][1].type, NumberType):
                 raise TypingError(self.name.debug, "int",
-                                  self.params[name].type)
-        self.type = self.func.type.apply(self.params.keys())
+                                  self.params[i].type)
+        self.type = self.func.type.apply((name) for name, _ in self.params)
         if self.func.retfunc:
             ret = Property(self, Name("return", self.name.debug))
             ret.type = NumberType()
@@ -97,7 +121,7 @@ class Application:
         if self.node is None:
             func = self.func.nodisate()
             params = tuple(
-                (key, node.nodisate()) for key, node in self.params.items())
+                (key, node.nodisate()) for key, node in self.params)
             self.node = Node(interpreter.Application(func, params))
         return self.node
 
@@ -108,11 +132,18 @@ class Application:
             compiler.add_line(
                 "Node *{} = create_application({}, {});"
                 .format(self.ccname, func, len(self.params)))
-            for key, node in self.params.items():
+            for key, node in self.params:
                 node_name = node.compile(compiler)
-                compiler.add_line(
-                    "set_appl_arg({}, \"{}\", {});"
-                    .format(self.ccname, key, node_name))
+                if isinstance(key, int):
+                    compiler.add_line(
+                        "set_appl_arg_num({}, {}, {});"
+                        .format(self.ccname, key, node_name)
+                    )
+                else:
+                    compiler.add_line(
+                        "set_appl_arg_str({}, \"{}\", {});"
+                        .format(self.ccname, key, node_name)
+                    )
         return self.ccname
 
 
@@ -133,9 +164,6 @@ class Property:
 
     def find_arguments(self):
         return self.left.find_arguments()
-
-    def find_deps(self, result, context):
-        self.left.find_deps(result, context)
 
     def outer_link(self, functions):
         if self.linked:
@@ -254,13 +282,6 @@ class Function:
             ", ".join(repr(assign) for assign in self.code.values())
         )
 
-    @classmethod
-    def _processed(cls, vardict, resultdict):
-        ret = cls(tuple(), tuple())
-        ret.node_vars = vardict
-        ret.node_results = resultdict
-        return ret
-
     def add_assign(self, name, rhs, end=False):
         if name.text in self.code:
             raise DuplicateNameError(self.code[name.text].name, name)
@@ -289,13 +310,6 @@ class Function:
         for result in self.results:
             result.outer_link(functions)
 
-    def find_deps(self):
-        context = tuple(val[0].text for val in self.code) +\
-                  tuple(name.text for name in self.varlist)
-        self.deps = set()
-        for name, rhs in self.code:
-            rhs.find_deps(self.deps, context)
-
     def nodisate(self):
         if self.node is None:
             self.node = Node(interpreter.Function.from_function(self))
@@ -309,6 +323,11 @@ class Function:
                 "Node *{} = create_func({}, {});"
                 .format(self.ccname, len(self.varlist), len(self.results))
             )
+            for var in self.varlist:
+                compiler.add_line(
+                    "set_func_arg({}, \"{}\");"
+                    .format(self.ccname, var.get_text())
+                )
             for assignment in self.results:
                 key = assignment.get_text()
                 node = assignment.compile(compiler)
@@ -359,19 +378,25 @@ def expr(it):
         cur = Application(cur)
         next(it)
         now, new = next(it)
-        expect_token_type(now, Name)
-        expect_token_type(new, Literal("="))
-        name = now
-        next(it)
+        if check_token_type(new, Literal("=")):
+            expect_token_type(now, Name)
+            name = now
+            next(it)
+        else:
+            name = None
+            it.repeat_last()
         rhs = expr(it)
         cur.add_param(name, rhs)
         now, new = next(it)
         while check_token_type(now, Literal(",")):
             now, new = next(it)
-            expect_token_type(now, Name)
-            expect_token_type(new, Literal("="))
-            name = now
-            next(it)
+            if check_token_type(new, Literal("=")):
+                expect_token_type(now, Name)
+                name = now
+                next(it)
+            else:
+                name = None
+                it.repeat_last()
             rhs = expr(it)
             cur.add_param(name, rhs)
             now, new = next(it)

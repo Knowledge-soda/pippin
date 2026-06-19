@@ -22,9 +22,10 @@ class BuiltInFunction(Function):
         if self.node is None:
             self.node = Node(
                 Function(
-                    {"l": None, "r": None},
                     {"return": BUILT_IN_NODES[self.name]},
-                    ()))
+                    (("l", None), ("r", None))
+                )
+            )
         return self.node
 
     def compile(self, compiler):

@@ -8,7 +8,7 @@ class NumberType:
 
 class FunctionType:
     def __init__(self, ins, outs):
-        self.ins = set(ins)
+        self.ins = list(ins)
         self.outs = set(outs)
         self.needed = {
             var: set() for var in self.outs}
@@ -35,16 +35,27 @@ class FunctionType:
         return not self.needed[var]
 
     def _apply(self, variables):
-        varset = set(variables)
-        if not varset.issubset(self.ins):
-            raise SemanticError(
-                "Application of nonexistant arguments {} "
-                "to function of type {}"
-                .format(varset - self.ins, self)
-            )
+        varset = set()
+        for var in variables:
+            if isinstance(var, int):
+                if var >= len(self.ins):
+                    raise SemanticError(
+                        "Application of too high index {} "
+                        "to function with {} arguments"
+                        .format(var, len(self.ins))
+                    )
+                varset.add(self.ins[var])
+            else:
+                if var not in self.ins:
+                    raise SemanticError(
+                        "Application of nonexistant argument {} "
+                        "to function of type {}"
+                        .format(var, self)
+                    )
+                varset.add(var)
         for var in self.outs:
             self.needed[var] -= varset
-        self.ins -= varset
+        self.ins = list(filter(lambda var: var not in varset, self.ins))
 
     def apply(self, variables):
         ret = FunctionType(self.ins, self.outs)

@@ -1,5 +1,5 @@
 square = (a){
-    [r] = *(l=a, r=a)
+    [r] = *(a, a)
 }
 
 # comment
@@ -17,5 +17,5 @@ main = (x){
         }#
         Nesting
     }#
-    [s] = +(l=square(a=x).r, r=square(a=+(l=x, r=1)).r)
+    [s] = +(square(x).r, square(+(x, 1)).r)
 }

@@ -10,7 +10,8 @@ typedef enum {
     FUNC,
     APPL,
     PROP,
-    NAME
+    NAME,
+    NONE
 } NodeType;
 
 typedef struct Node Node;
@@ -25,6 +26,20 @@ typedef struct Pairs {
     size_t len;
     Pair *data;
 } Pairs;
+
+typedef struct AppPair {
+    bool numeric;
+    union {
+        size_t index;
+        char *name;
+    } name;
+    Node *value;
+} AppPair;
+
+typedef struct AppPairs {
+    size_t len;
+    AppPair *data;
+} AppPairs;
 
 typedef Node* (*unary)(Pairs args);
 
@@ -44,7 +59,7 @@ typedef struct {
 
 typedef struct {
     Node *func;
-    Pairs args;
+    AppPairs args;
 } Application;
 
 typedef struct {
@@ -103,6 +118,8 @@ void debug_print_node(Node *node){
                 printf(" name=%s, left=%p", (node -> data).prop.name,
                         (node -> data).prop.left);
                 break;
+            case NONE:
+                printf(" NONE");
     }
 }
 
@@ -144,6 +161,14 @@ Node *create_func(size_t expect_args, size_t number_of_returns){
     return ret;
 }
 
+void set_func_arg(Node *func, char *name){
+    Pair *args = (func -> data).func.args.data;
+    size_t len = (func -> data).func.args.len;
+    args[len].name = name;
+    args[len].value = NULL;
+    ((func -> data).func.args.len)++;
+}
+
 void set_func_res(Node *func, char *name, Node *res){
     Pair *returns = (func -> data).func.results.data;
     size_t len = (func -> data).func.results.len;
@@ -157,16 +182,26 @@ Node *create_application(Node *func, size_t number_of_arguments){
     ret -> type = APPL;
     ret -> clone = NULL;
     (ret -> data).appl.func = func;
-    (ret -> data).appl.args.data = malloc(sizeof(Pair) * number_of_arguments);
+    (ret -> data).appl.args.data = malloc(sizeof(AppPair) * number_of_arguments);
     (ret -> data).appl.args.len = 0;
     return ret;
 }
 
-void set_appl_arg(Node *appl, char *name, Node *res){
-    Pair *returns = (appl -> data).appl.args.data;
+void set_appl_arg_str(Node *appl, char *name, Node *res){
+    AppPair *returns = (appl -> data).appl.args.data;
     size_t len = (appl -> data).appl.args.len;
-    returns[len].name = name;
+    returns[len].name.name = name;
     returns[len].value = res;
+    returns[len].numeric = false;
+    ((appl -> data).appl.args.len)++;
+}
+
+void set_appl_arg_num(Node *appl, size_t i, Node *res){
+    AppPair *returns = (appl -> data).appl.args.data;
+    size_t len = (appl -> data).appl.args.len;
+    returns[len].name.index = i;
+    returns[len].value = res;
+    returns[len].numeric = true;
     ((appl -> data).appl.args.len)++;
 }
 
@@ -195,11 +230,13 @@ Node *eval(Node *node);
 void find_rl_arguments(Pairs args, Node **left, Node **right){
     for (size_t i = 0;i < args.len;i++){
         if (args.data[i].name[0] == 'l' &&
-            args.data[i].name[1] == '\0'){
+            args.data[i].name[1] == '\0' &&
+            args.data[i].value){
             *left = eval(args.data[i].value);
         }
         if (args.data[i].name[0] == 'r' &&
-            args.data[i].name[1] == '\0'){
+            args.data[i].name[1] == '\0' &&
+            args.data[i].value){
             *right = eval(args.data[i].value);
         }
     }
@@ -237,10 +274,15 @@ Node *deep_clone_application(Node *appl, Pairs args){
     (ret -> data).appl.func = clone((appl -> data).appl.func, args);
 
     size_t len = (appl -> data).appl.args.len;
-    Pair *old_data = (appl -> data).appl.args.data;
-    Pair *new_data = malloc(sizeof(Pair) * len);
+    AppPair *old_data = (appl -> data).appl.args.data;
+    AppPair *new_data = malloc(sizeof(AppPair) * len);
     for (size_t i = 0;i < len;i++){
-        new_data[i].name = old_data[i].name;
+        if (old_data[i].numeric){
+            new_data[i].name.index = old_data[i].name.index;
+        } else {
+            new_data[i].name.name = old_data[i].name.name;
+        }
+        new_data[i].numeric = old_data[i].numeric;
         new_data[i].value = clone((appl -> data).appl.args.data[i].value, args);
     }
     (ret -> data).appl.args.len = len;
@@ -251,7 +293,8 @@ Node *deep_clone_application(Node *appl, Pairs args){
 
 Node *get_argument(Node *arg, Pairs args){
     for (size_t i = 0;i < args.len;i++){
-        if (!strcmp((arg -> data).name.str, args.data[i].name))
+        if (!strcmp((arg -> data).name.str, args.data[i].name)
+            && args.data[i].value)
             return args.data[i].value;
     }
     return shallow_clone(arg); // shallow_clone??
@@ -262,6 +305,7 @@ Node *clone(Node *old, Pairs args){
         return old -> clone;
     switch (old -> type){
         case NUMBER:
+        case NONE:
             return old;
         case BIFUNC:
             return (old -> clone = (old -> data).bfunc.code(args));
@@ -285,6 +329,7 @@ void end_cloning(Node *node){
         return;
     node -> clone = NULL;
     switch (node -> type){
+        case NONE:
         case NUMBER:
         case BIFUNC:
         case FUNC:
@@ -338,6 +383,8 @@ Node *divide(Pairs args){
 
 Node *create_rl_built_in(unary code){
     Node *ret = create_func(2, 1);
+    set_func_arg(ret, "l");
+    set_func_arg(ret, "r");
     Node *res = create_built_in(code);
     set_func_res(ret, "return", res);
     return ret;
@@ -350,12 +397,37 @@ void add_pairs(Pairs from, Pairs *to){
     }
 }
 
-void apply(Node *ret, Node *func, Pairs applications){
+size_t find_arg(Pairs args, AppPair arg){
+    if (arg.numeric){
+        size_t index = arg.name.index;
+        for (size_t ret = 0;ret < args.len;ret++){
+            if (!args.data[ret].value){
+                if (index) index--;
+                else return ret;
+            }
+        }
+    } else {
+        for (size_t ret = 0;ret < args.len;ret++){
+            if (!strcmp(args.data[ret].name, arg.name.name))
+                return ret;
+        }
+    }
+    return 0;
+    // TODO: out of bounds error
+}
+
+void apply(Node *ret, Node *func, AppPairs applications){
     set_up_func(ret, (func -> data).func.args.len + applications.len,
                      (func -> data).func.results.len);
     (ret -> data).func.changed = true;
     add_pairs((func -> data).func.args, &(ret -> data).func.args);
-    add_pairs(applications, &(ret -> data).func.args);
+    size_t indexes[applications.len];
+    for (size_t i = 0;i < applications.len;i++){
+        indexes[i] = find_arg((func -> data).func.args, applications.data[i]);
+    }
+    for (size_t i = 0;i < applications.len;i++){
+        (ret -> data).func.args.data[indexes[i]].value = applications.data[i].value;
+    }
     add_pairs((func -> data).func.results, &(ret -> data).func.results);
 }
 
@@ -386,6 +458,7 @@ Node *eval(Node *node){
     bool run = true;
     while (run){
         switch (node -> type){
+            case NONE:
             case NUMBER:
             case BIFUNC:
             case FUNC:
@@ -430,6 +503,9 @@ void print(Node *node){
             case PROP:
                 printf("Result is unprintable (PROP)\n");
                 break;
+            case NONE:
+                printf("Result is unprintable (NONE)\n");
+                break;
     }
 }
 
@@ -444,18 +520,18 @@ size_t presplit(char *str, int *num){
 Node *create_one_apply(Node *func, char *var, int num){
     Node *num_node = create_number(num);
     Node *res = create_application(func, 1);
-    set_appl_arg(res, var, num_node);
+    set_appl_arg_str(res, var, num_node);
     return res;
 }
 
-Pair create_single_pair(char *var, int num){
+AppPair create_single_pair(char *var, int num){
     Node *num_node = create_number(num);
-    return (Pair) {.name = var, .value = num_node};
+    return (AppPair) {.name.name = var, .value = num_node, .numeric = false};
 }
 
-void apply_one(Node *node, Pair pair){
-    (node -> data).func.args.data[(node -> data).func.args.len] = pair;
-    (node -> data).func.args.len++;
+void apply_one(Node *node, AppPair pair){
+    size_t index = find_arg((node -> data).func.args, pair);
+    (node -> data).func.args.data[index].value = pair.value;
     (node -> data).func.changed = true;
 }
 

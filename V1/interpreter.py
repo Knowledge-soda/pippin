@@ -38,15 +38,14 @@ class InterpretedNode:
 
 
 class Function(InterpretedNode):
-    def __init__(self, vars_, results, arguments, changed=False):
-        self.vars = vars_
+    def __init__(self, results, arguments, changed=False):
         self.results = results
         self.arguments = arguments
         self.changed = changed
 
     def __repr__(self):
         return "FUNCTION({} -> {}; PA: {})".format(
-                ", ".join(key for key in self.vars.keys()),
+                ", ".join(key for key, value in self.vars),
                 ", ".join(key for key in self.results.keys()),
                 ", ".join(key for key, value in self.arguments)
                 )
@@ -54,16 +53,31 @@ class Function(InterpretedNode):
     @classmethod
     def from_function(cls, function):
         return cls({
-            var.get_text(): var.nodisate() for var in function.varlist
-        }, {
             var.get_text(): var.nodisate() for var in function.results
-        }, ())
+        }, (
+            tuple((var.get_text(), None) for var in function.varlist)
+        ))
+
+    def _find_arg(self, arg):
+        if isinstance(arg, int):
+            for i, (name, value) in enumerate(self.arguments):
+                if value is None:
+                    if not arg:
+                        return i, name
+                    arg -= 1
+        else:
+            for i, (name, value) in enumerate(self.arguments):
+                if name == arg:
+                    return i, name
 
     def apply(self, applications):
+        newargs = list(self.arguments)
+        for name, value in applications:
+            i, newname = self._find_arg(name)
+            newargs[i] = (newname, value)
         return Function(
-            self.vars,
             self.results.copy(),
-            self.arguments + applications,
+            tuple(newargs),
             True
         )
 
