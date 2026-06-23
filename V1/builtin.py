@@ -34,12 +34,13 @@ class BuiltInFunction(Function):
 
 def generate_builtins():
     return {
-        name: BuiltInFunction(name) for name in "+-*/"
+        name: BuiltInFunction(name) for name in
+        ("plus", "minus", "mult", "div")
     }
 
 
 def builtins_compile(compiler):
-    for name in "+-*/":
+    for name in ("plus", "minus", "mult", "div"):
         code = BUILT_IN_CODES[name]
         compiler.add_line(
             "Node *{} = create_rl_built_in({});"
@@ -84,16 +85,16 @@ class DivNode(BuiltInNode):
 
 
 BUILT_IN_NODES = {
-    "+": PlusNode(),
-    "*": MultNode(),
-    "-": MinusNode(),
-    "/": DivNode()
+    "plus": PlusNode(),
+    "mult": MultNode(),
+    "minus": MinusNode(),
+    "div": DivNode()
 }
 
 
 BUILT_IN_CODES = {
-    "+": "sum",
-    "*": "mult",
-    "-": "minus",
-    "/": "divide"
+    "plus": "sum",
+    "mult": "mult",
+    "minus": "minus",
+    "div": "divide"
 }

@@ -1,4 +1,4 @@
 main = (a, b){
-    tmp = *(l=2, r=a),
-    [out] = +(l=tmp, r=b)
+    tmp = mult(l=2, r=a),
+    [out] = tmp + b
 }

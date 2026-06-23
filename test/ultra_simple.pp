@@ -1,5 +1,5 @@
 main = (a, b){
-    [out] = +(l=a, r=b),
+    [out] = a + b,
     [aout] = a,
     [bout] = b
 }

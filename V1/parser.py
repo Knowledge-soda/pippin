@@ -41,6 +41,13 @@ def check_token_type(token, token_class):
     return isinstance(token, token_class)
 
 
+def check_token_types(token, class_list):
+    for token_class in class_list:
+        if check_token_type(token, token_class):
+            return True
+    return False
+
+
 def expect_token_type(token, token_class):
     if not check_token_type(token, token_class):
         raise UnexpectedTokenError(token, token_class.name)
@@ -54,6 +61,30 @@ def expect_token_types(token, class_list):
         token,
         "/".join(token_class.name for token_class in class_list)
     )
+
+
+class BinOp:
+    TABLE = {
+            "+": "plus",
+            "-": "minus",
+            "*": "mult",
+            "/": "div"
+    }
+
+    def __init__(self, left, right, op):
+        self.left = left
+        self.right = right
+        self.op = op
+
+    def __repr__(self):
+        return "BIN{}({}, {})".format(
+                repr(self.op), repr(self.left), repr(self.right))
+
+    def inner_link(self, code, chain):
+        ret = Application(Name(self.TABLE[self.op.ch], self.op.debug))
+        ret.add_param(Name("l", self.op.debug), self.left)
+        ret.add_param(Name("r", self.op.debug), self.right)
+        return ret.inner_link(code, chain)
 
 
 class Application:
@@ -368,27 +399,38 @@ class Program:
         return self.main.compile(compiler)
 
 
+def expression(it):
+    ret = expression2(it)
+    now, new = next(it)
+    while check_token_types(now, (Literal("+"), Literal("-"))):
+        right = expression2(it)
+        ret = BinOp(ret, right, now)
+        now, new = next(it)
+    it.repeat_last()
+    return ret
+
+
+def expression2(it):
+    ret = expr(it)
+    now, new = next(it)
+    while check_token_types(now, (Literal("*"), Literal("/"))):
+        right = expr(it)
+        ret = BinOp(ret, right, now)
+        now, new = next(it)
+    it.repeat_last()
+    return ret
+
+
 def expr(it):
     now, new = next(it)
     if check_token_type(now, Number):
         return now
     expect_token_types(now, (Name, Number))
     cur = now
-    if check_token_type(new, Literal("(")):
-        cur = Application(cur)
-        next(it)
-        now, new = next(it)
-        if check_token_type(new, Literal("=")):
-            expect_token_type(now, Name)
-            name = now
+    while check_token_types(new, (Literal("("), Literal("."))):
+        if check_token_type(new, (Literal("("))):
+            cur = Application(cur)
             next(it)
-        else:
-            name = None
-            it.repeat_last()
-        rhs = expr(it)
-        cur.add_param(name, rhs)
-        now, new = next(it)
-        while check_token_type(now, Literal(",")):
             now, new = next(it)
             if check_token_type(new, Literal("=")):
                 expect_token_type(now, Name)
@@ -397,14 +439,26 @@ def expr(it):
             else:
                 name = None
                 it.repeat_last()
-            rhs = expr(it)
+            rhs = expression(it)
             cur.add_param(name, rhs)
             now, new = next(it)
-        expect_token_type(now, Literal(")"))
-    if check_token_type(new, Literal(".")):
-        next(it)
-        now, new = next(it)
-        cur = Property(cur, now)
+            while check_token_type(now, Literal(",")):
+                now, new = next(it)
+                if check_token_type(new, Literal("=")):
+                    expect_token_type(now, Name)
+                    name = now
+                    next(it)
+                else:
+                    name = None
+                    it.repeat_last()
+                rhs = expression(it)
+                cur.add_param(name, rhs)
+                now, new = next(it)
+            expect_token_type(now, Literal(")"))
+        if check_token_type(new, Literal(".")):
+            next(it)
+            now, new = next(it)
+            cur = Property(cur, now)
     return cur
 
 
@@ -457,7 +511,7 @@ def function(it):
                 expect_token_types(now, (Literal("["), Name))
             now, new = next(it)
             expect_token_type(now, Literal("="))
-            rhs = expr(it)
+            rhs = expression(it)
             cur.add_assign(name, rhs, result)
             now, new = next(it)
             expect_token_types(now, (Literal("}"), Literal(",")))

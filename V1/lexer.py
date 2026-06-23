@@ -3,8 +3,8 @@ from .types import NumberType
 from .interpreter import Node
 from . import interpreter
 
-ADDITIONAL = "_-+*/"
-LITERALS = "=()[]{}.,"
+ADDITIONAL = "_"
+LITERALS = "=()[]{}.,+-*/"
 
 
 class END:
