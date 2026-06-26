@@ -381,10 +381,37 @@ Node *divide(Pairs args){
     return create_number((left -> data).num.value / (right -> data).num.value);
 }
 
+Node *if_node(Pairs args){
+    bool select = false;
+    for (size_t i = 0;i < args.len;i++){
+        if (!strcmp(args.data[i].name, "cond")){
+            Node *tmp = eval(args.data[i].value);
+            select = (tmp -> data).num.value;
+        }
+    }
+    char *get = select ? "then" : "else";
+    for (size_t i = 0;i < args.len;i++){
+        if (!strcmp(args.data[i].name, get)){
+            return eval(args.data[i].value);
+        }
+    }
+    return NULL;
+}
+
 Node *create_rl_built_in(unary code){
     Node *ret = create_func(2, 1);
     set_func_arg(ret, "l");
     set_func_arg(ret, "r");
+    Node *res = create_built_in(code);
+    set_func_res(ret, "return", res);
+    return ret;
+}
+
+Node *create_if_built_in(unary code){
+    Node *ret = create_func(3, 1);
+    set_func_arg(ret, "cond");
+    set_func_arg(ret, "then");
+    set_func_arg(ret, "else");
     Node *res = create_built_in(code);
     set_func_res(ret, "return", res);
     return ret;

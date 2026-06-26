@@ -343,7 +343,8 @@ class Function:
 
     def nodisate(self):
         if self.node is None:
-            self.node = Node(interpreter.Function.from_function(self))
+            self.node = Node(None)
+            self.node.content = interpreter.Function.from_function(self)
             self.node.node = self.node
         return self.node
 

@@ -62,3 +62,6 @@ class FunctionType:
         ret.needed = self.needed.copy()
         ret._apply(variables)
         return ret
+
+    def get_input_list(self):
+        return tuple((name, None) for name in self.ins)

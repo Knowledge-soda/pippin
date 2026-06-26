@@ -14,5 +14,6 @@ h = (x){
 
 main = (x){
     [out] = f(x=x).c,
-    [out2] = h(x=x).o
+    [out2] = h(x=x).o,
+    [out3] = f(x=x).a
 }
