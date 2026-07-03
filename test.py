@@ -42,7 +42,20 @@ def test_compiler(filename, compiled_filename):
     tokens = lexer.tokenize(text)
     program = parser.program(parser.LL1(tokens))
     program.link(builtin.generate_builtins())
-    comp = compiler.Compiler()
+    comp = compiler.CCompiler()
     builtin.builtins_compile(comp)
     main_name = program.compile(comp)
     comp.finish(main_name, compiled_filename)
+
+
+def test_ad_hoc(filename, compiled_filename):
+    with open(filename) as file:
+        text = file.read()
+    tokens = lexer.tokenize(text)
+    program = parser.program(parser.LL1(tokens))
+    program.link(builtin.generate_builtins())
+    comp = compiler.AHCompiler()
+    comp.set_builtins(builtin.BUILT_INS)
+    program.ad_hoc_compile(comp)
+    comp.print_instructions()
+    comp.finish(compiled_filename)

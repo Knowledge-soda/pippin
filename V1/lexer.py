@@ -2,6 +2,7 @@ from .error import LexicalError, AssignmentLoopError, UnknownNameError
 from .types import NumberType
 from .interpreter import Node
 from . import interpreter
+from .compiler import NumOperand, Instruction
 
 ADDITIONAL = "_"
 LITERALS = "=()[]{}.,+-*/"
@@ -70,6 +71,7 @@ class Number:
         self.linked = False
         self.node = None
         self.ccname = None
+        self.instruction = None
 
     def __repr__(self):
         return self.name
@@ -98,6 +100,12 @@ class Number:
             compiler.add_line(
                 "Node *{} = create_number({});".format(self.ccname, self.n))
         return self.ccname
+
+    def ad_compile(self, compiler):
+        if self.instruction is None:
+            self.instruction = Instruction("NUM_CONST", NumOperand(self.n))
+            compiler.add_instruction(self.instruction)
+        return NumOperand(self.instruction.index)
 
 
 class Name:

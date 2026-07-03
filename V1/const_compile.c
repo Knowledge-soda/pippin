@@ -352,32 +352,40 @@ void end_cloning(Node *node){
 Node *sum(Pairs args){
     Node *left = NULL, *right = NULL;
     find_rl_arguments(args, &left, &right);
-    if (left == NULL || right == NULL)
+    if (left == NULL || right == NULL){
+        printf("RTE: sum\n");
         return create_number(0);
+    }
     return create_number((left -> data).num.value + (right -> data).num.value);
 }
 
 Node *mult(Pairs args){
     Node *left = NULL, *right = NULL;
     find_rl_arguments(args, &left, &right);
-    if (left == NULL || right == NULL)
+    if (left == NULL || right == NULL){
         return create_number(0);
+        printf("RTE: mult\n");
+    }
     return create_number((left -> data).num.value * (right -> data).num.value);
 }
 
 Node *minus(Pairs args){
     Node *left = NULL, *right = NULL;
     find_rl_arguments(args, &left, &right);
-    if (left == NULL || right == NULL)
+    if (left == NULL || right == NULL){
         return create_number(0);
+        printf("RTE: minus\n");
+    }
     return create_number((left -> data).num.value - (right -> data).num.value);
 }
 
 Node *divide(Pairs args){
     Node *left = NULL, *right = NULL;
     find_rl_arguments(args, &left, &right);
-    if (left == NULL || right == NULL)
+    if (left == NULL || right == NULL){
         return create_number(0);
+        printf("RTE: divide\n");
+    }
     return create_number((left -> data).num.value / (right -> data).num.value);
 }
 

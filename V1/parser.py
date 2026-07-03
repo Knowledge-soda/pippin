@@ -4,6 +4,7 @@ from .error import UnexpectedTokenError, DuplicateNameError, \
 from .types import FunctionType, NumberType
 from .interpreter import Node
 from . import interpreter
+from .compiler import NumOperand, FuncRef, Instruction
 
 
 class LL1:
@@ -95,6 +96,7 @@ class Application:
         self.retfunc = False
         self.node = None
         self.ccname = None
+        self.instruction = None
 
     def __repr__(self):
         return "APPL({}, ({}))".format(
@@ -177,6 +179,29 @@ class Application:
                     )
         return self.ccname
 
+    def ad_compile(self, compiler):
+        if self.instruction is None:
+            func = self.func.ad_compile(compiler)
+            app_ins = []
+            for key, node in self.params:
+                node_ins = node.ad_compile(compiler)
+                if isinstance(key, int):
+                    ins = Instruction("SET_NUM_ARG",
+                                      NumOperand(key),
+                                      node_ins)
+                else:
+                    key_index = compiler.add_constant(key)
+                    ins = Instruction("SET_STR_ARG",
+                                      NumOperand(key_index),
+                                      node_ins)
+                app_ins.append(ins)
+            self.instruction = Instruction("APPLY", func,
+                                           NumOperand(len(self.params)))
+            compiler.add_instruction(self.instruction)
+            for ins in app_ins:
+                compiler.add_instruction(ins)
+        return NumOperand(self.instruction.index)
+
 
 class Property:
     def __init__(self, left, right):
@@ -185,6 +210,7 @@ class Property:
         self.linked = False
         self.node = None
         self.ccname = None
+        self.instruction = None
 
     def __repr__(self):
         return "PROP({}, {})".format(self.left, self.right)
@@ -228,6 +254,15 @@ class Property:
             )
         return self.ccname
 
+    def ad_compile(self, compiler):
+        if self.instruction is None:
+            left_ins = self.left.ad_compile(compiler)
+            str_index = compiler.add_constant(self.right.get_text())
+            self.instruction = Instruction("PROPERTY", left_ins,
+                                           NumOperand(str_index))
+            compiler.add_instruction(self.instruction)
+        return NumOperand(self.instruction.index)
+
 
 class Assignment:
     def __init__(self, name, right):
@@ -259,6 +294,9 @@ class Assignment:
     def compile(self, compiler):
         return self.right.compile(compiler)
 
+    def ad_compile(self, compiler):
+        return self.right.ad_compile(compiler)
+
 
 class Argument:
     def __init__(self, name):
@@ -266,6 +304,7 @@ class Argument:
         self.linked = True
         self.node = None
         self.ccname = None
+        self.instruction = None
 
     def __repr__(self):
         return "({})".format(self.name)
@@ -297,6 +336,13 @@ class Argument:
             )
         return self.ccname
 
+    def ad_compile(self, compiler):
+        if self.instruction is None:
+            str_index = compiler.add_constant(self.name.text)
+            self.instruction = Instruction("ARG_NAME", NumOperand(str_index))
+            compiler.add_instruction(self.instruction)
+        return NumOperand(self.instruction.index)
+
 
 class Function:
     def __init__(self, varlist, statlist):
@@ -307,6 +353,7 @@ class Function:
             self.code[var.text] = Argument(var)
         self.node = None
         self.ccname = None
+        self.instruction = None
 
     def __repr__(self):
         return "CODE({})".format(
@@ -369,6 +416,30 @@ class Function:
                 )
         return self.ccname
 
+    def ad_hoc_compile(self, compiler):
+        if self.instruction is None or isinstance(self.instruction, FuncRef):
+            args = []
+            for var in self.varlist:
+                args.append(NumOperand(compiler.add_constant(var.get_text())))
+            self.instruction = Instruction("AD_FUNC",
+                                           NumOperand(len(self.results)),
+                                           NumOperand(len(self.varlist)),
+                                           *args)
+            compiler.add_instruction(self.instruction)
+            for assignment in self.results:
+                key = NumOperand(compiler.add_constant(assignment.get_text()))
+                ins = assignment.ad_compile(compiler)
+                compiler.add_instruction(Instruction("SET_RES", key, ins))
+
+    def ad_compile(self, compiler):
+        if self.instruction is None:
+            compiler.add_function(self)
+            self.instruction = FuncRef(self)
+        if isinstance(self.instruction, FuncRef):
+            return self.instruction
+        else:
+            return NumOperand(self.instruction.index)
+
 
 class Program:
     def __init__(self):
@@ -398,6 +469,10 @@ class Program:
 
     def compile(self, compiler):
         return self.main.compile(compiler)
+
+    def ad_hoc_compile(self, compiler):
+        compiler.add_function(self.main)
+        compiler.aggregate()
 
 
 def expression(it):

@@ -1,6 +1,9 @@
 from .types import FunctionType
 from . import interpreter
 from .interpreter import Function, Node, Number
+from .compiler import NumOperand
+
+BUILT_INS = ("plus", "minus", "mult", "div", "if")
 
 
 class BuiltInFunction(Function):
@@ -36,11 +39,14 @@ class BuiltInFunction(Function):
     def compile(self, compiler):
         return "_PAG_" + BUILT_IN_CODES[self.name]
 
+    def ad_compile(self, compiler):
+        return NumOperand(BUILT_INS.index(self.name))
+
 
 def generate_builtins():
     return {
         name: BuiltInFunction(name) for name in
-        ("plus", "minus", "mult", "div", "if")
+        BUILT_INS
     }
 
 
