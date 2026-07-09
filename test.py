@@ -5,7 +5,7 @@ def test_lexer(filename):
     with open(filename) as file:
         text = file.read()
     tokens = lexer.tokenize(text)
-    print(tokens)
+    return tokens
 
 
 def test_parser(filename):

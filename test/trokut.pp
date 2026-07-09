@@ -11,8 +11,8 @@ trokut = (a, b){
 }
 
 main = (a, b){
+    [trok] = trokut(a=a, b=b).p,
     p = pravokutnik(a=a, b=b),
     [ops] = p.o,
-    [prav_povr] = p.p,
-    [trok] = trokut(a=a, b=b).p
+    [prav_povr] = p.p
 }

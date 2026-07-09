@@ -44,8 +44,7 @@ class Function(InterpretedNode):
         self.changed = changed
 
     def __repr__(self):
-        return "FUNCTION({} -> {}; PA: {})".format(
-                ", ".join(key for key, value in self.vars),
+        return "FUNCTION({}; PA: {})".format(
                 ", ".join(key for key in self.results.keys()),
                 ", ".join(key for key, value in self.arguments)
                 )
@@ -157,7 +156,7 @@ class Argument(InterpretedNode):
 
     def clone(self, arguments):
         for key, value in arguments:
-            if key == self.name:
+            if key == self.name and value is not None:
                 return value.content
         return self
 

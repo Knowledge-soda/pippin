@@ -134,20 +134,22 @@ class Application:
 
     def outer_link(self, functions):
         if self.linked:
-            return self
+            return self.assign_element
         self.linked = True
         self.func = self.func.outer_link(functions)
         for i, (name, value) in enumerate(self.params):
             self.params[i] = (name, value.outer_link(functions))
             if not isinstance(self.params[i][1].type, NumberType):
                 raise TypingError(self.name.debug, "int",
-                                  self.params[i].type)
+                                  self.params[i][1].type)
         self.type = self.func.type.apply((name) for name, _ in self.params)
         if self.func.retfunc:
             ret = Property(self, Name("return", self.name.debug))
             ret.type = NumberType()
             ret.linked = True
+            self.assign_element = ret
             return ret
+        self.assign_element = self
         return self
 
     def nodisate(self):
@@ -211,6 +213,7 @@ class Property:
         self.node = None
         self.ccname = None
         self.instruction = None
+        self.assign_element = self
 
     def __repr__(self):
         return "PROP({}, {})".format(self.left, self.right)
@@ -286,7 +289,7 @@ class Assignment:
         return self.name.text
 
     def outer_link(self, functions):
-        self.right = self.right.outer_link(functions)
+        self.right = self.right.outer_link(functions).assign_element
 
     def nodisate(self):
         return self.right.nodisate()
@@ -305,6 +308,7 @@ class Argument:
         self.node = None
         self.ccname = None
         self.instruction = None
+        self.assign_element = self
 
     def __repr__(self):
         return "({})".format(self.name)
@@ -385,6 +389,7 @@ class Function:
             self.results[0].get_text() == "return"
 
     def outer_link(self, functions):
+        self.assign_element = self
         for result in self.results:
             result.outer_link(functions)
 

@@ -86,6 +86,7 @@ class Number:
         if self.linked:
             return self
         self.linked = True
+        self.assign_element = self
         self.type = NumberType()
         return self
 
