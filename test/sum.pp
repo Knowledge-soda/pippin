@@ -1,4 +1,4 @@
-square = (a){
+square = \(a){
     [r] = a * a
 }
 
@@ -9,7 +9,7 @@ Multiline
 comment
 }#
 
-main = (x){
+main = \(x){
     #{
         this
         #{

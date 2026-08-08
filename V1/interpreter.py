@@ -38,6 +38,8 @@ class InterpretedNode:
 
 
 class Function(InterpretedNode):
+    counter = 0
+
     def __init__(self, results, arguments, changed=False):
         self.results = results
         self.arguments = arguments
@@ -82,6 +84,8 @@ class Function(InterpretedNode):
 
     def get(self, text):
         if self.changed:
+            # print("Getting {} ({})".format(text, type(self).counter))
+            type(self).counter += 1
             for name, result in self.results.items():
                 self.results[name] = result.clone(self.arguments)
             self.changed = False

@@ -38,6 +38,14 @@ class DuplicateNameError(SemanticError):
         )
 
 
+class DuplicateParametarError(SemanticError):
+    def __init__(self, token1, token2):
+        super().__init__(
+            "'{}' assigned to twice ({}:{} and {}:{}) in one application!"
+            .format(token1.text, *token1.debug, *token2.debug)
+        )
+
+
 class AssignmentLoopError(SemanticError):
     def __init__(self, chain):
         super().__init__(

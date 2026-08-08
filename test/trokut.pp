@@ -1,16 +1,16 @@
-pravokutnik = (a, b){
+pravokutnik = \(a, b){
     [p] = a * b,
     t = 2 * b,
     [o] = 2 * a + t
 }
 
-trokut = (a, b){
+trokut = \(a, b){
     t = pravokutnik(a=a),
     tt = t(b=b).p,
     [p] = tt / 2
 }
 
-main = (a, b){
+main = \(a, b){
     [trok] = trokut(a=a, b=b).p,
     p = pravokutnik(a=a, b=b),
     [ops] = p.o,

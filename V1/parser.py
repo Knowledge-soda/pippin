@@ -1,7 +1,7 @@
 from .lexer import Number, Name, Literal, END
 from .error import UnexpectedTokenError, DuplicateNameError, \
-        TypingError, SyntacticError
-from .types import FunctionType, NumberType
+        SyntacticError, DuplicateParametarError
+# from .types import FunctionType, NumberType
 from .interpreter import Node
 from . import interpreter
 from .compiler import NumOperand, FuncRef, Instruction
@@ -81,11 +81,11 @@ class BinOp:
         return "BIN{}({}, {})".format(
                 repr(self.op), repr(self.left), repr(self.right))
 
-    def inner_link(self, code, chain):
+    def inner_link(self, func, chain):
         ret = Application(Name(self.TABLE[self.op.ch], self.op.debug))
         ret.add_param(Name("l", self.op.debug), self.left)
         ret.add_param(Name("r", self.op.debug), self.right)
-        return ret.inner_link(code, chain)
+        return ret.inner_link(func, chain)
 
 
 class Application:
@@ -93,6 +93,7 @@ class Application:
         self.name = name
         self.params = []
         self.linked = False
+        self.replaced = False
         self.retfunc = False
         self.node = None
         self.ccname = None
@@ -107,30 +108,63 @@ class Application:
             )
         )
 
+    @classmethod
+    def already_linked(cls, func, params):
+        ret = cls(func)
+        ret.func = func
+        ret.params = params
+        return ret
+
     def add_param(self, name, rhs):
         self.params.append((name, rhs))
 
-    def inner_link(self, code, chain):
-        self.func = self.name.inner_link(code, chain)
+    def inner_link(self, func, chain):
+        self.func = self.name.inner_link(func, chain)
         # TODO: accept number specified inputs
         accepting = 0
         new_params = []
+        param_names = {}
         for i, (name, value) in enumerate(self.params):
-            right = value.inner_link(code, chain)
+            right = value.inner_link(func, chain)
             if name is None:
                 if accepting:
                     raise SyntacticError("Free argument too late!",
                                          value.debug)
                 new_params.append((i, right))
             if isinstance(name, Name):
+                if name.text in param_names:
+                    old_param = self.params[param_names[name.text]]
+                    raise DuplicateParametarError(name, old_param[0])
                 new_params.append((name.text, right))
+                param_names[name.text] = i
                 accepting = 2
         self.params = new_params
+        return self
+
+    def re_link(self, closure):
+        self.func = self.func.re_link(closure)
+        for i, (name, value) in enumerate(self.params):
+            self.params[i] = (name, value.re_link(closure))
+        return self
+
+    def apply_replace(self, skip=False):
+        if self.replaced:
+            return self
+        if not skip:
+            self.func = self.func.apply_replace()
+        for i, (name, value) in enumerate(self.params):
+            self.params[i] = (name, value.apply_replace())
+        self.replaced = True
         return self
 
     def find_arguments(self):
         return self.func.find_arguments().union(
             *(value.find_arguments() for _, value in self.params))
+
+    def accumulate_closure(self, code, closure):
+        self.func.accumulate_closure(code, closure)
+        for (name, value) in self.params:
+            value.accumulate_closure(code, closure)
 
     def outer_link(self, functions):
         if self.linked:
@@ -139,13 +173,13 @@ class Application:
         self.func = self.func.outer_link(functions)
         for i, (name, value) in enumerate(self.params):
             self.params[i] = (name, value.outer_link(functions))
-            if not isinstance(self.params[i][1].type, NumberType):
-                raise TypingError(self.name.debug, "int",
-                                  self.params[i][1].type)
-        self.type = self.func.type.apply((name) for name, _ in self.params)
+            # if not isinstance(self.params[i][1].type, NumberType):
+            #    raise TypingError(self.name.debug, "int",
+            #                      self.params[i][1].type)
+        # self.type = self.func.type.apply((name) for name, _ in self.params)
         if self.func.retfunc:
             ret = Property(self, Name("return", self.name.debug))
-            ret.type = NumberType()
+            # ret.type = NumberType()
             ret.linked = True
             self.assign_element = ret
             return ret
@@ -214,22 +248,35 @@ class Property:
         self.ccname = None
         self.instruction = None
         self.assign_element = self
+        self.closure = set()
 
     def __repr__(self):
         return "PROP({}, {})".format(self.left, self.right)
 
-    def inner_link(self, code, chain):
-        self.left = self.left.inner_link(code, chain)
+    def inner_link(self, func, chain):
+        self.left = self.left.inner_link(func, chain)
+        return self
+
+    def re_link(self, closure):
+        self.left = self.left.re_link(closure)
+        return self
+
+    def apply_replace(self):
+        self.left = self.left.apply_replace()
         return self
 
     def find_arguments(self):
         return self.left.find_arguments()
+
+    def accumulate_closure(self, parent_code, closure):
+        self.left.accumulate_closure(parent_code, closure)
 
     def outer_link(self, functions):
         if self.linked:
             return self
         self.linked = True
         self.left = self.left.outer_link(functions)
+        """
         if not isinstance(self.left.type, FunctionType):
             raise TypingError(self.right.debug,
                               "function",
@@ -239,6 +286,7 @@ class Property:
                               "[{}]".format(self.right.text),
                               self.left.type)
         self.type = NumberType()
+        """
         return self
 
     def nodisate(self):
@@ -276,11 +324,17 @@ class Assignment:
     def __repr__(self):
         return "ASSIGN({}={})".format(repr(self.name), repr(self.right))
 
-    def inner_link(self, code, chain):
+    def inner_link(self, func, chain):
         if not self.linked:
             self.linked = True
-            self.right = self.right.inner_link(code, chain + (self.name.text,))
+            self.right = self.right.inner_link(func, chain + (self.name.text,))
         return self.right
+
+    def re_link(self, closure):
+        self.right = self.right.re_link(closure)
+
+    def apply_replace(self):
+        self.right = self.right.apply_replace()
 
     def find_arguments(self):
         return self.right.find_arguments()
@@ -290,6 +344,9 @@ class Assignment:
 
     def outer_link(self, functions):
         self.right = self.right.outer_link(functions).assign_element
+
+    def accumulate_closure(self, code, closure):
+        self.right.accumulate_closure(code, closure)
 
     def nodisate(self):
         return self.right.nodisate()
@@ -309,11 +366,16 @@ class Argument:
         self.ccname = None
         self.instruction = None
         self.assign_element = self
+        self.retfunc = False
 
     def __repr__(self):
         return "({})".format(self.name)
 
-    def inner_link(self, code, chain):
+    @classmethod
+    def from_string(cls, text):
+        return cls(Name(text, (0, 0)))
+
+    def inner_link(self, func, chain):
         return self
 
     def get_text(self):
@@ -322,8 +384,17 @@ class Argument:
     def find_arguments(self):
         return frozenset((self.name.text,))
 
+    def accumulate_closure(self, code, closure):
+        pass
+
+    def re_link(self, *args):
+        return self
+
+    def apply_replace(self):
+        return self
+
     def outer_link(self, functions):
-        self.type = NumberType()
+        # self.type = NumberType()
         return self
 
     def nodisate(self):
@@ -354,10 +425,15 @@ class Function:
         self.results = [Argument(var) for var in statlist]
         self.code = {var.text: Argument(var) for var in varlist}
         for var in self.results:
-            self.code[var.text] = Argument(var)
+            self.code[var.get_text()] = var
         self.node = None
         self.ccname = None
         self.instruction = None
+        self.assign_element = self
+        self.replace = None
+        self.linked = None
+        self.functions = []
+        self.unknowns = set()
 
     def __repr__(self):
         return "CODE({})".format(
@@ -372,11 +448,55 @@ class Function:
             self.results.append(assign)
         self.code[name.text] = assign
 
-    def inner_link(self):
+    def add_subfunction(self, func):
+        if func not in self.functions:
+            self.functions.append(func)
+
+    def extend(self, closure):
+        new_closure = {var: Argument.from_string(var) for var
+                       in closure.keys()}
+        for name, arg in new_closure.items():
+            self.varlist.append(arg)
+            self.code[name] = arg
+        if closure:
+            self.replace = Application.already_linked(self,
+                                                      list(closure.items()))
+            self.re_link(new_closure)
+        else:
+            self.replace = self
+
+    def inner_link(self, func, chain):
+        if self.replace is not None:
+            return self.replace
         for result in self.results:
-            result.inner_link(self.code, tuple())
+            result.inner_link(self, tuple())
+            # result.link(self)
+        for function in self.functions:
+            closure = {var: self.code[var].right for var in function.unknowns
+                       if var in self.code}
+            function.extend(closure)
+        self.compute_type()
+        self.replace_all()
+        if func is not None:
+            func.add_subfunction(self)
+        return self
+
+    def re_link(self, closure):
+        for result in self.results:
+            result.re_link(closure)
+
+    def replace_all(self):
+        for result in self.results:
+            result.apply_replace()
+
+    def apply_replace(self):
+        if self.replace is self:
+            return self
+        else:
+            return self.replace.apply_replace(skip=True)
 
     def compute_type(self):
+        """
         self.type = FunctionType(
             (var.get_text() for var in self.varlist),
             (var.get_text() for var in self.results)
@@ -385,13 +505,18 @@ class Function:
             if isinstance(result, Argument):
                 continue
             self.type.connect(result.find_arguments(), result.get_text())
+        """
         self.retfunc = len(self.results) == 1 and\
             self.results[0].get_text() == "return"
 
     def outer_link(self, functions):
+        if self.linked:
+            return self
+        self.linked = True
         self.assign_element = self
         for result in self.results:
             result.outer_link(functions)
+        return self
 
     def nodisate(self):
         if self.node is None:
@@ -450,6 +575,7 @@ class Program:
     def __init__(self):
         self.functions = {}
         self.main = None
+        self.lambda_functions = {}
 
     def __repr__(self):
         return "PROGRAM:\n" + "\n".join(
@@ -463,11 +589,15 @@ class Program:
 
     def link(self, built_ins):
         for function in self.functions.values():
-            function.inner_link()
+            function.inner_link(self, tuple())
             function.compute_type()
+        self.functions.update(self.lambda_functions)
         self.functions.update(built_ins)
         for function in self.functions.values():
             function.outer_link(self.functions)
+
+    def add_subfunction(self, func):
+        self.lambda_functions[len(self.lambda_functions)] = func
 
     def nodisate(self):
         return self.main.nodisate()
@@ -506,8 +636,14 @@ def expr(it):
     now, new = next(it)
     if check_token_type(now, Number):
         return now
-    expect_token_types(now, (Name, Number))
-    cur = now
+    expect_token_types(now, (Name, Literal("\\")))
+    if check_token_type(now, Literal("\\")):
+        it.repeat_last()
+        cur = function(it)
+        now = it.now
+        new = it.look_ahead
+    else:
+        cur = now
     while check_token_types(new, (Literal("("), Literal("."))):
         if check_token_type(new, (Literal("("))):
             cur = Application(cur)
@@ -545,23 +681,43 @@ def expr(it):
 
 def function(it):
     now, new = next(it)
+    expect_token_type(now, Literal("\\"))
+    now, new = next(it)
     varlist = []
     statlist = []
-    expect_token_types(now, (Literal("("), Literal("[")))
+    expect_token_types(now, (Literal("("), Literal("{")))
     if check_token_type(now, Literal("(")):
         now, new = next(it)
-        expect_token_type(now, Name)
-        name = now
+        expect_token_types(now, (Name, Literal("[")))
+        if check_token_type(now, Literal("[")):
+            name, new = next(it)
+            expect_token_type(name, Name)
+            expect_token_type(new, Literal("]"))
+            statlist.append(name)
+            next(it)
+        else:
+            name = now
         varlist.append(name)
         now, new = next(it)
-        while check_token_type(now, Literal(",")):
+        while check_token_type(now, Literal(",")) and\
+                not check_token_type(new, Literal(")")):
             now, new = next(it)
-            expect_token_type(now, Name)
-            name = now
+            expect_token_types(now, (Name, Literal("[")))
+            if check_token_type(now, Literal("[")):
+                name, new = next(it)
+                expect_token_type(name, Name)
+                expect_token_type(new, Literal("]"))
+                statlist.append(name)
+                next(it)
+            else:
+                name = now
             varlist.append(name)
+            now, new = next(it)
+        if check_token_type(now, Literal(",")):
             now, new = next(it)
         expect_token_type(now, Literal(")"))
         now, new = next(it)
+    """
     if check_token_type(now, Literal("[")):
         now, new = next(it)
         expect_token_type(now, Name)
@@ -575,6 +731,7 @@ def function(it):
             now, new = next(it)
         expect_token_type(now, Literal("]"))
         now, new = next(it)
+    """
     cur = Function(varlist, statlist)
     if check_token_type(now, Literal("{")):
         while not check_token_type(now, Literal("}")):
@@ -596,6 +753,8 @@ def function(it):
             cur.add_assign(name, rhs, result)
             now, new = next(it)
             expect_token_types(now, (Literal("}"), Literal(",")))
+    else:
+        it.repeat_last()
     return cur
 
 

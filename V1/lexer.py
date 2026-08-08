@@ -5,7 +5,7 @@ from . import interpreter
 from .compiler import NumOperand, Instruction
 
 ADDITIONAL = "_"
-LITERALS = "=()[]{}.,+-*/"
+LITERALS = "=()[]{}.\\,+-*/"
 
 
 class END:
@@ -90,6 +90,18 @@ class Number:
         self.type = NumberType()
         return self
 
+    def re_link(self, *args):
+        return self
+
+    def apply_replace(self, *args):
+        return self
+
+    def link(self, parent):
+        return self
+
+    def accumulate_closure(self, *args):
+        pass
+
     def nodisate(self):
         if self.node is None:
             self.node = Node(interpreter.Number(self.n))
@@ -120,14 +132,24 @@ class Name:
     def __repr__(self):
         return self.name
 
-    def inner_link(self, code, chain):
+    def inner_link(self, func, chain):
         if self.text in chain:
             raise AssignmentLoopError(chain + (self.text,))
-        if self.text in code:
-            assign = code[self.text]
-            return assign.inner_link(code, chain)
+        if self.text in func.code:
+            assign = func.code[self.text]
+            return assign.inner_link(func, chain)
+        else:
+            func.unknowns.add(self.text)
+            return self
+
+    def re_link(self, closure):
+        if self.text in closure:
+            return closure[self.text]
         else:
             return self
+
+    def apply_replace(self):
+        return self
 
     def find_arguments(self):
         return frozenset()
@@ -139,6 +161,13 @@ class Name:
         if self.text not in functions:
             raise UnknownNameError(self.debug, self.text)
         return functions[self.text]
+
+    def link(self, parent):
+        return self
+
+    def accumulate_closure(self, code, closure):
+        if self.text in code.keys():
+            closure.add(self.text)
 
     def find_deps(self, result, context):
         if self.text not in context:

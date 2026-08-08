@@ -65,3 +65,17 @@ class FunctionType:
 
     def get_input_list(self):
         return tuple((name, None) for name in self.ins)
+
+
+class AnyType:
+    def __repr__(self):
+        return "T"
+
+    def connect(self):
+        pass
+
+    def free(self, var):
+        return True
+
+    def apply(self, vars):
+        return AnyType()
