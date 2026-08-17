@@ -5,8 +5,8 @@ factorial = \(n){
 }
 
 fibbonaci = \(n){
-    [return] = if(n,
-        then=if(n - 1,
+    [return] = if(more(n, 0),
+        then=if(more(n, 1),
             then=fibbonaci(n - 1) + fibbonaci(n - 2),
             else=1),
         else=0)
@@ -14,7 +14,7 @@ fibbonaci = \(n){
 
 fib2 = \(n){
     last = fib2(n - 1),
-    [prev] = if(n - 1,
+    [prev] = if(geq(n, 2),
         then=last.now,
         else=0),
     [now] = if(n - 1,

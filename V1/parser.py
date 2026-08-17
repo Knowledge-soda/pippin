@@ -1,4 +1,4 @@
-from .lexer import Number, Name, Literal, END
+from .lexer import Number, Name, Literal, String, END
 from .error import UnexpectedTokenError, DuplicateNameError, \
         SyntacticError, DuplicateParametarError
 # from .types import FunctionType, NumberType
@@ -249,6 +249,7 @@ class Property:
         self.instruction = None
         self.assign_element = self
         self.closure = set()
+        self.retfunc = False
 
     def __repr__(self):
         return "PROP({}, {})".format(self.left, self.right)
@@ -367,6 +368,7 @@ class Argument:
         self.instruction = None
         self.assign_element = self
         self.retfunc = False
+        self.right = self
 
     def __repr__(self):
         return "({})".format(self.name)
@@ -434,6 +436,7 @@ class Function:
         self.linked = None
         self.functions = []
         self.unknowns = set()
+        self.debug = (0, 0)
 
     def __repr__(self):
         return "CODE({})".format(
@@ -508,6 +511,7 @@ class Function:
         """
         self.retfunc = len(self.results) == 1 and\
             self.results[0].get_text() == "return"
+        # TODO: check number of inputs
 
     def outer_link(self, functions):
         if self.linked:
@@ -634,7 +638,7 @@ def expression2(it):
 
 def expr(it):
     now, new = next(it)
-    if check_token_type(now, Number):
+    if check_token_types(now, (Number, String)):
         return now
     expect_token_types(now, (Name, Literal("\\")))
     if check_token_type(now, Literal("\\")):

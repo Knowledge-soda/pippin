@@ -1,6 +1,6 @@
 #include"const_compile.c"
 
-#define NO_BUILTINS (5)
+#define NO_BUILTINS (15)
 
 typedef enum InstructionType {
     AD_FUNC,
@@ -11,7 +11,8 @@ typedef enum InstructionType {
     SET_NUM_ARG,
     PROPERTY,
     ARG_NAME,
-    NUM_CONST
+    NUM_CONST,
+    STR_CONST
 } InstructionType;
 
 
@@ -65,7 +66,17 @@ void create_builtins(Node **node_list){
     node_list[1] = create_rl_built_in(minus);
     node_list[2] = create_rl_built_in(mult);
     node_list[3] = create_rl_built_in(divide);
-    node_list[4] = create_if_built_in(if_node);
+    node_list[4] = create_rl_built_in(less);
+    node_list[5] = create_rl_built_in(more);
+    node_list[6] = create_rl_built_in(equal);
+    node_list[7] = create_rl_built_in(geq);
+    node_list[8] = create_rl_built_in(leq);
+    node_list[9] = create_ternary_built_in(if_node, "cond", "then", "else");
+    node_list[10] = create_ternary_built_in(get_node, "function", "property", NULL);
+    node_list[11] = create_ternary_built_in(apply_node, "function", "name", "value");
+    node_list[12] = create_str_built_in(str_head);
+    node_list[13] = create_str_built_in(str_tail);
+    node_list[14] = create_str_built_in(str_empty);
 }
 
 size_t get_instruction_size(InstructionType type){
@@ -73,6 +84,7 @@ size_t get_instruction_size(InstructionType type){
         case AD_FUNC:
             return 0;
         case ARG_NAME:
+        case STR_CONST:
         case NUM_CONST:
             return 5;
         case PROPERTY:
@@ -154,6 +166,10 @@ Node *load_program(FILE *file){
             node_list[write_index] = create_number(num);
             read_index += 4;
             // printf("NUM_CONST %i\n", num);
+        } else if (type == STR_CONST){
+            int string = read_signed(code + read_index);
+            node_list[write_index] = create_string(c_table[string]);
+            read_index += 4;
         } else if (type == APPLY){
             int node_index = read_signed(code + read_index);
             read_index += 4;

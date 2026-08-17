@@ -11,6 +11,7 @@ typedef enum {
     APPL,
     PROP,
     NAME,
+    STRING,
     NONE
 } NodeType;
 
@@ -71,6 +72,10 @@ typedef struct {
     char *str;
 } Name;
 
+typedef struct {
+    char *str;
+} String;
+
 // Node definition
 struct Node {
     NodeType type;
@@ -82,6 +87,7 @@ struct Node {
         Application appl;
         Propery prop;
         Name name;
+        String str;
     } data;
 };
 
@@ -117,6 +123,9 @@ void debug_print_node(Node *node){
             case PROP:
                 printf(" name=%s, left=%p", (node -> data).prop.name,
                         (node -> data).prop.left);
+                break;
+            case STRING:
+                printf(" str=%s", (node -> data).name.str);
                 break;
             case NONE:
                 printf(" NONE");
@@ -222,6 +231,14 @@ Node *create_name(char *str){
     return ret;
 }
 
+Node *create_string(char *str){
+    Node *ret = malloc(sizeof(Node));
+    ret -> type = STRING;
+    ret -> clone = NULL;
+    (ret -> data).name.str = str;
+    return ret;
+}
+
 // important declarations
 Node *clone(Node *old, Pairs args);
 Node *eval(Node *node);
@@ -240,6 +257,18 @@ void find_rl_arguments(Pairs args, Node **left, Node **right){
             *right = eval(args.data[i].value);
         }
     }
+}
+
+Node *find_str_argument(Pairs args){
+    for (size_t i = 0;i < args.len;i++){
+        if (args.data[i].name[0] == 's' &&
+            args.data[i].name[1] == 't' &&
+            args.data[i].name[2] == 'r' &&
+            args.data[i].value){
+            return eval(args.data[i].value);
+        }
+    }
+    return NULL;
 }
 
 void absorb(Node *lhs, Node *rhs){
@@ -305,6 +334,7 @@ Node *clone(Node *old, Pairs args){
         return old -> clone;
     switch (old -> type){
         case NUMBER:
+        case STRING:
         case NONE:
             return old;
         case BIFUNC:
@@ -333,6 +363,7 @@ void end_cloning(Node *node){
         case NUMBER:
         case BIFUNC:
         case FUNC:
+        case STRING:
         case NAME:
             break;
         case APPL:
@@ -389,6 +420,56 @@ Node *divide(Pairs args){
     return create_number((left -> data).num.value / (right -> data).num.value);
 }
 
+Node *less(Pairs args){
+    Node *left = NULL, *right = NULL;
+    find_rl_arguments(args, &left, &right);
+    if (left == NULL || right == NULL){
+        return create_number(0);
+        printf("RTE: divide\n");
+    }
+    return create_number((left -> data).num.value < (right -> data).num.value);
+}
+
+Node *more(Pairs args){
+    Node *left = NULL, *right = NULL;
+    find_rl_arguments(args, &left, &right);
+    if (left == NULL || right == NULL){
+        return create_number(0);
+        printf("RTE: divide\n");
+    }
+    return create_number((left -> data).num.value > (right -> data).num.value);
+}
+
+Node *equal(Pairs args){
+    Node *left = NULL, *right = NULL;
+    find_rl_arguments(args, &left, &right);
+    if (left == NULL || right == NULL){
+        return create_number(0);
+        printf("RTE: divide\n");
+    }
+    return create_number((left -> data).num.value == (right -> data).num.value);
+}
+
+Node *geq(Pairs args){
+    Node *left = NULL, *right = NULL;
+    find_rl_arguments(args, &left, &right);
+    if (left == NULL || right == NULL){
+        return create_number(0);
+        printf("RTE: divide\n");
+    }
+    return create_number((left -> data).num.value >= (right -> data).num.value);
+}
+
+Node *leq(Pairs args){
+    Node *left = NULL, *right = NULL;
+    find_rl_arguments(args, &left, &right);
+    if (left == NULL || right == NULL){
+        return create_number(0);
+        printf("RTE: divide\n");
+    }
+    return create_number((left -> data).num.value <= (right -> data).num.value);
+}
+
 Node *if_node(Pairs args){
     bool select = false;
     for (size_t i = 0;i < args.len;i++){
@@ -406,6 +487,63 @@ Node *if_node(Pairs args){
     return NULL;
 }
 
+Node *get_node(Pairs args){
+    Node *function = NULL;
+    for (size_t i = 0;i < args.len;i++){
+        if (!strcmp(args.data[i].name, "function")){
+            function = args.data[i].value;
+        }
+    }
+    for (size_t i = 0;i < args.len;i++){
+        if (!strcmp(args.data[i].name, "property")){
+            Node *tmp = eval(args.data[i].value);
+            return create_property(function,
+                (tmp -> data).str.str);
+        }
+    }
+    return NULL;
+}
+
+Node *apply_node(Pairs args){
+    Node *function = NULL, *value = NULL;
+    for (size_t i = 0;i < args.len;i++){
+        if (!strcmp(args.data[i].name, "function")){
+            function = args.data[i].value;
+        }
+        if (!strcmp(args.data[i].name, "value")){
+            value = args.data[i].value;
+        }
+    }
+    for (size_t i = 0;i < args.len;i++){
+        if (!strcmp(args.data[i].name, "name")){
+            Node *tmp = eval(args.data[i].value);
+            Node *res = create_application(function, 1);
+            if (tmp -> type == NUMBER){
+                set_appl_arg_num(res, (tmp -> data).num.value, value);
+            } else if (tmp -> type == STRING){
+                set_appl_arg_str(res, (tmp -> data).str.str, value);
+            }
+            return res;
+        }
+    }
+    return NULL;
+}
+
+Node *str_head(Pairs args){
+    Node *str = find_str_argument(args);
+    return create_number((str -> data).str.str[0]);
+}
+
+Node *str_tail(Pairs args){
+    Node *str = find_str_argument(args);
+    return create_string((str -> data).str.str + 1);
+}
+
+Node *str_empty(Pairs args){
+    Node *str = find_str_argument(args);
+    return create_number(!(str -> data).str.str[0]);
+}
+
 Node *create_rl_built_in(unary code){
     Node *ret = create_func(2, 1);
     set_func_arg(ret, "l");
@@ -415,11 +553,22 @@ Node *create_rl_built_in(unary code){
     return ret;
 }
 
-Node *create_if_built_in(unary code){
-    Node *ret = create_func(3, 1);
-    set_func_arg(ret, "cond");
-    set_func_arg(ret, "then");
-    set_func_arg(ret, "else");
+Node *create_ternary_built_in(unary code,
+        char *first, char *second, char *third){
+    size_t size = 3;
+    if (third == NULL) size = 2;
+    Node *ret = create_func(size, 1);
+    set_func_arg(ret, first);
+    set_func_arg(ret, second);
+    if (third != NULL) set_func_arg(ret, third);
+    Node *res = create_built_in(code);
+    set_func_res(ret, "return", res);
+    return ret;
+}
+
+Node *create_str_built_in(unary code){
+    Node *ret = create_func(1, 1);
+    set_func_arg(ret, "str");
     Node *res = create_built_in(code);
     set_func_res(ret, "return", res);
     return ret;
@@ -497,6 +646,7 @@ Node *eval(Node *node){
             case NUMBER:
             case BIFUNC:
             case FUNC:
+            case STRING:
             case NAME:
                 run = false;
                 break;
@@ -523,6 +673,9 @@ void print(Node *node){
             case NUMBER:
                 printf("%i\n", (node -> data).num.value);
                 break;
+            case STRING:
+                printf("%s\n", (node -> data).str.str);
+                break;
             case BIFUNC:
                 printf("Result is unprintable (BIFUNC)\n");
                 break;
@@ -544,19 +697,24 @@ void print(Node *node){
     }
 }
 
-size_t presplit(char *str, int *num){
+size_t presplit(char *str, Node **node){
     size_t ret = 0;
     for (;str[ret] != '=';ret++);
     str[ret] = '\0';
-    sscanf(str + ret + 1, "%i", num);
+    if (str[ret + 1] == '"'){
+        char *val;
+        size_t size = 0;
+        for (;str[ret + 2 + size] != '"';size++);
+        str[ret + 2 + size] = '\0';
+        val = malloc(sizeof(char) * size);
+        strcpy(val, str + ret + 2);
+        *node = create_string(val);
+    } else {
+        int num;
+        sscanf(str + ret + 1, "%i", &num);
+        *node = create_number(num);
+    }
     return ret;
-}
-
-Node *create_one_apply(Node *func, char *var, int num){
-    Node *num_node = create_number(num);
-    Node *res = create_application(func, 1);
-    set_appl_arg_str(res, var, num_node);
-    return res;
 }
 
 AppPair create_single_pair(char *var, int num){
@@ -587,10 +745,11 @@ void driver(Node *node){
             eval(ret);
             print(ret);
         } else {
-            int num;
-            char *str = malloc(sizeof(char) * (presplit(input, &num) + 1));
+            Node *value;
+            char *str = malloc(sizeof(char) * (presplit(input, &value) + 1));
             strcpy(str, input);
-            apply_one(node, create_single_pair(str, num));
+            apply_one(node, (AppPair) {.name.name = str, .value = value,
+                    .numeric = false});
         }
     }
 }

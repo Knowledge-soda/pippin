@@ -189,6 +189,29 @@ class Number(InterpretedNode):
         return self
 
 
+class String(InterpretedNode):
+    def __init__(self, value):
+        self.value = value
+
+    def __repr__(self):
+        return self.value
+
+    def clone(self, arguments):
+        return self
+
+    def end_cloning_process(self):
+        return
+
+    def eval(self):
+        return self
+
+
+def get_literal(text):
+    if text[0] == "\"":
+        return Node(String(text[1:-1]))
+    return Node(Number(int(text)))
+
+
 def driver(main):
     while True:
         line = input()
@@ -200,4 +223,4 @@ def driver(main):
             break
         else:
             var, num = line.split("=")
-            main.content = main.content.apply(((var, Node(Number(int(num)))),))
+            main.content = main.content.apply(((var, get_literal(num)),))

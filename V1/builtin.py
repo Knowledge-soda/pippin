@@ -1,9 +1,11 @@
 from .types import FunctionType
 from . import interpreter
-from .interpreter import Function, Node, Number
+from .interpreter import Function, Node, Number, Property, Application, String
 from .compiler import NumOperand
 
-BUILT_INS = ("plus", "minus", "mult", "div", "if")
+BUILT_INS = ("plus", "minus", "mult", "div", "less", "more",
+             "equal", "geq", "leq", "if", "get", "apply",
+             "strhead", "strtail", "strempty")
 
 
 class BuiltInFunction(Function):
@@ -13,6 +15,19 @@ class BuiltInFunction(Function):
             self.type = FunctionType(
                 ("cond", "then", "else"), ("return",))
             self.type.connect(set(("cond", "then", "else")), "return")
+        elif self.name == "get":
+            self.type = FunctionType(
+                ("function", "property"), ("return",))
+            self.type.connect(set(("function", "property")), "return")
+        elif self.name == "apply":
+            self.type = FunctionType(
+                ("function", "name", "value"), ("return",))
+            self.type.connect(set(("function", "name", "value")), "return")
+        elif self.name.startswith("str"):
+            self.type = FunctionType(
+                ("str", ), ("return",)
+            )
+            self.type.connect(set(("str",)), "return")
         else:
             self.type = FunctionType(
                 ("l", "r"), ("return",))
@@ -51,17 +66,36 @@ def generate_builtins():
 
 
 def builtins_compile(compiler):
-    for name in ("plus", "minus", "mult", "div"):
+    for name in BUILT_INS:
         code = BUILT_IN_CODES[name]
-        compiler.add_line(
-            "Node *{} = create_rl_built_in({});"
-            .format("_PAG_" + code, code)
-        )
-    code = BUILT_IN_CODES["if"]
-    compiler.add_line(
-        "Node *{} = create_if_built_in({});"
-        .format("_PAG_" + code, code)
-    )
+        if name == "if":
+            compiler.add_line(
+                "Node *{} = create_ternary_built_in({},"
+                "\"cond\", \"then\", \"else\");"
+                .format("_PAG_" + code, code)
+            )
+        elif name == "apply":
+            compiler.add_line(
+                "Node *{} = create_ternary_built_in({},"
+                "\"function\", \"name\", \"value\");"
+                .format("_PAG_" + code, code)
+            )
+        elif name == "get":
+            compiler.add_line(
+                "Node *{} = create_ternary_built_in({},"
+                "\"function\", \"property\", NULL);"
+                .format("_PAG_" + code, code)
+            )
+        elif name.startswith("str"):
+            compiler.add_line(
+                "Node *{} = create_str_built_in({});"
+                .format("_PAG_" + code, code)
+            )
+        else:
+            compiler.add_line(
+                "Node *{} = create_rl_built_in({});"
+                .format("_PAG_" + code, code)
+            )
 
 
 class BuiltInNode(interpreter.InterpretedNode):
@@ -105,6 +139,36 @@ class DivNode(BuiltInNode):
         return Node(Number(left.value // right.value))
 
 
+class LessNode(BuiltInNode):
+    def clone(self, arguments):
+        left, right = self.find_arguments(arguments)
+        return Node(Number(int(left.value < right.value)))
+
+
+class MoreNode(BuiltInNode):
+    def clone(self, arguments):
+        left, right = self.find_arguments(arguments)
+        return Node(Number(int(left.value > right.value)))
+
+
+class EqualNode(BuiltInNode):
+    def clone(self, arguments):
+        left, right = self.find_arguments(arguments)
+        return Node(Number(int(left.value == right.value)))
+
+
+class GeqNode(BuiltInNode):
+    def clone(self, arguments):
+        left, right = self.find_arguments(arguments)
+        return Node(Number(int(left.value >= right.value)))
+
+
+class LeqNode(BuiltInNode):
+    def clone(self, arguments):
+        left, right = self.find_arguments(arguments)
+        return Node(Number(int(left.value <= right.value)))
+
+
 class IfNode(BuiltInNode):
     def clone(self, arguments):
         cond = self.find_argument(arguments, "cond")
@@ -117,12 +181,60 @@ class IfNode(BuiltInNode):
         return ret
 
 
+class GetNode(BuiltInNode):
+    def clone(self, arguments):
+        function = self.find_argument(arguments, "function")
+        name = self.find_argument(arguments, "property")
+        name.eval()
+        return Node(Property(function, name.content.value))
+
+
+class ApplyNode(BuiltInNode):
+    def clone(self, arguments):
+        function = self.find_argument(arguments, "function")
+        name = self.find_argument(arguments, "name")
+        name.eval()
+        value = self.find_argument(arguments, "value")
+        return Node(Application(function, ((name.content.value, value),)))
+
+
+class StrHead(BuiltInNode):
+    def clone(self, arguments):
+        string = self.find_argument(arguments, "str")
+        string.eval()
+        return Node(Number(ord(string.content.value[0])))
+
+
+class StrTail(BuiltInNode):
+    def clone(self, arguments):
+        string = self.find_argument(arguments, "str")
+        string.eval()
+        return Node(String(string.content.value[1:]))
+
+
+class StrEmpty(BuiltInNode):
+    def clone(self, arguments):
+        string = self.find_argument(arguments, "str")
+        string.eval()
+        return Node(Number(int(len(string.content.value) == 0)))
+
+
 BUILT_IN_NODES = {
     "plus": PlusNode(),
     "mult": MultNode(),
     "minus": MinusNode(),
     "div": DivNode(),
-    "if": IfNode()
+    "less": LessNode(),
+    "more": MoreNode(),
+    "equal": EqualNode(),
+    "geq": GeqNode(),
+    "leq": LeqNode(),
+    "if": IfNode(),
+    "get": GetNode(),
+    "apply": ApplyNode(),
+    "strhead": StrHead(),
+    "strtail": StrTail(),
+    "strempty": StrEmpty()
 }
 
 
@@ -131,5 +243,15 @@ BUILT_IN_CODES = {
     "mult": "mult",
     "minus": "minus",
     "div": "divide",
-    "if": "if_node"
+    "less": "less",
+    "more": "more",
+    "equal": "equal",
+    "geq": "geq",
+    "leq": "leq",
+    "if": "if_node",
+    "get": "get_node",
+    "apply": "apply_node",
+    "strhead": "str_head",
+    "strtail": "str_tail",
+    "strempty": "str_empty"
 }

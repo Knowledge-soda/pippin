@@ -126,6 +126,7 @@ class Instruction:
             "PROPERTY": 6,
             "ARG_NAME": 7,
             "NUM_CONST": 8,
+            "STR_CONST": 9
     }
 
     def __init__(self, opcode, *args):

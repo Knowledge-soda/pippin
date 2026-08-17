@@ -5,7 +5,7 @@ from . import interpreter
 from .compiler import NumOperand, Instruction
 
 ADDITIONAL = "_"
-LITERALS = "=()[]{}.\\,+-*/"
+LITERALS = "=()[]{}.\\,+-*/<>"
 
 
 class END:
@@ -13,6 +13,12 @@ class END:
 
 
 class LL1Text:
+    STRING_TABLE = {
+        "n": "\n",
+        "\"": "\"",
+        "\\": "\\"
+    }
+
     def __init__(self, text):
         self._gen = self._look_ahead_iterator(iter(text))
         self.row = 1
@@ -58,6 +64,30 @@ class LL1Text:
                                           or self.look_ahead in ADDITIONAL):
             next(self)
             buffer.append(self.now)
+        return "".join(buffer)
+
+    def read_string(self):
+        next(self)
+        buffer = []
+        while self.now != '"':
+            if self.look_ahead == END:
+                raise LexicalError(
+                    "String does not terminate!",
+                    self.get_debug())
+            if not self.now.isprintable():
+                next(self)
+                continue
+            if self.now == "\\":
+                if self.look_ahead in self.STRING_TABLE:
+                    buffer.append(self.STRING_TABLE[self.look_ahead])
+                    next(self)
+                else:
+                    raise LexicalError(
+                        "Unknown escape character '\\{}'"
+                        .format(self.now), self.get_debug())
+            else:
+                buffer.append(self.now)
+            next(self)
         return "".join(buffer)
 
 
@@ -174,6 +204,68 @@ class Name:
             result.add(self.text)
 
 
+class String:
+    name = "STRING"
+
+    def __init__(self, text, debug):
+        self.text = text
+        self.row, self.col = self.debug = debug
+        self.name = "STRING '{}'".format(text)
+        self.linked = False
+        self.node = None
+        self.ccname = None
+        self.instruction = None
+
+    def __repr__(self):
+        return self.name
+
+    def inner_link(self, *args):
+        return self
+
+    def find_arguments(self):
+        return frozenset()
+
+    def outer_link(self, *args):
+        if self.linked:
+            return self
+        self.linked = True
+        self.assign_element = self
+        return self
+
+    def re_link(self, *args):
+        return self
+
+    def apply_replace(self, *args):
+        return self
+
+    def link(self, parent):
+        return self
+
+    def accumulate_closure(self, *args):
+        pass
+
+    def nodisate(self):
+        if self.node is None:
+            self.node = Node(interpreter.String(self.text))
+        return self.node
+
+    def compile(self, compiler):
+        if self.ccname is None:
+            self.ccname = compiler.get_name("ARG")
+            compiler.add_line(
+                "Node *{} = create_string(\"{}\");".
+                format(self.ccname, self.text)
+            )
+        return self.ccname
+
+    def ad_compile(self, compiler):
+        if self.instruction is None:
+            str_index = compiler.add_constant(self.text)
+            self.instruction = Instruction("STR_CONST", NumOperand(str_index))
+            compiler.add_instruction(self.instruction)
+        return NumOperand(self.instruction.index)
+
+
 class Pragma:
     name = "PRAGMA"
 
@@ -217,10 +309,15 @@ def tokenize(text):
         debug = it.get_debug()
         if ch.isdecimal():
             yield Number(it.read_while(str.isdecimal), debug)
+        elif ch in "<=>" and look == "=":
+            next(it)
+            yield Literal(ch + look, debug)
         elif ch in LITERALS:
             yield Literal(ch, debug)
         elif ch.isalpha() or ch in ADDITIONAL:
             yield Name(it.read_name(), debug)
+        elif ch == "\"":
+            yield String(it.read_string(), debug)
         elif ch == "#":
             if look == "#":
                 next(it)
